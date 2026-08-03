@@ -1,0 +1,9 @@
+{
+  "name": "@mcps/common",
+  "version": "0.1.0",
+  "description": "Gemeinsame Helfer für die macOS-MCP-Server (AppleScript, Kommando-Ausführung).",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.js"
+  }
+}

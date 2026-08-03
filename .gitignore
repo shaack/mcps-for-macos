@@ -1,0 +1,7 @@
+node_modules/
+*.log
+.DS_Store
+
+# Lokale, private Konfiguration (Kopie von config.example.json)
+packages/apple-mail/config.json
+.env

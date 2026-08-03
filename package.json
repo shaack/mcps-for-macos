@@ -1,0 +1,13 @@
+{
+  "name": "mcps-for-macos",
+  "version": "0.1.0",
+  "description": "MCP-Server für macOS-Automatisierung: Apple Mail, MoneyMoney und Spotlight.",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=18"
+  }
+}
