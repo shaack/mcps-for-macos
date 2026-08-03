@@ -293,3 +293,46 @@ ${setFlag}  return ("${verb}: " & (item 1 of foundSubjects))
 end tell`;
   return runAppleScript(script);
 }
+
+/**
+ * Legt einen **Entwurf** an und öffnet ihn sichtbar in Mail. Sendet bewusst
+ * NICHT: Empfänger, Betreff und Text sind ausgefüllt, das Abschicken machst du
+ * selbst im Mail-Fenster. So kann keine Mail versehentlich rausgehen.
+ *
+ * @param {object} opts
+ * @param {string[]} opts.to Empfängeradressen (mindestens eine)
+ * @param {string[]} [opts.cc] CC-Adressen
+ * @param {string[]} [opts.bcc] BCC-Adressen
+ * @param {string} [opts.subject] Betreff
+ * @param {string} [opts.body] Nachrichtentext (Klartext)
+ * @param {string} [opts.from] Absender, z. B. "Name <a@b.de>" (sonst Standardkonto)
+ * @returns {Promise<string>} "draft created: <Betreff>"
+ */
+export function createDraft({ to = [], cc = [], bcc = [], subject = "", body = "", from = "" }) {
+  if (!Array.isArray(to) || to.length === 0) {
+    throw new Error("Mindestens eine to-Adresse angeben.");
+  }
+  const recipients = (kind, list) =>
+    (Array.isArray(list) ? list : [])
+      .map((a) => `    make new ${kind} at end of ${kind}s with properties {address:${asStr(a)}}`)
+      .join("\n");
+  const recipLines = [
+    recipients("to recipient", to),
+    recipients("cc recipient", cc),
+    recipients("bcc recipient", bcc),
+  ].filter(Boolean).join("\n");
+  const senderLine = from ? `  set sender of m to ${asStr(from)}\n` : "";
+  const script = `
+set subj to ${asStr(subject)}
+set bod to ${asStr(body)}
+
+tell application "Mail"
+  set m to make new outgoing message with properties {subject:subj, content:bod, visible:true}
+  tell m
+${recipLines}
+  end tell
+${senderLine}  activate
+  return ("draft created: " & subj)
+end tell`;
+  return runAppleScript(script);
+}

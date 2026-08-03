@@ -8,6 +8,7 @@ import {
   saveAttachment,
   getMessageBody,
   flagMessage,
+  createDraft,
   DEFAULT_MAILBOXES,
 } from "./mail.js";
 
@@ -160,6 +161,29 @@ server.registerTool(
     },
   },
   (args) => run(() => flagMessage(args))
+);
+
+server.registerTool(
+  "create_draft",
+  {
+    title: "Entwurf anlegen",
+    description:
+      "Legt einen E-Mail-ENTWURF an und öffnet ihn sichtbar in Mail. Sendet bewusst " +
+      "NICHT: Empfänger, Betreff und Text sind ausgefüllt, das Abschicken macht der " +
+      "Nutzer selbst im Mail-Fenster. Mindestens eine to-Adresse angeben.",
+    inputSchema: {
+      to: z.array(z.string()).min(1).describe("Empfängeradressen (mindestens eine)"),
+      cc: z.array(z.string()).optional().describe("CC-Adressen"),
+      bcc: z.array(z.string()).optional().describe("BCC-Adressen"),
+      subject: z.string().optional().describe("Betreff"),
+      body: z.string().optional().describe("Nachrichtentext (Klartext)"),
+      from: z
+        .string()
+        .optional()
+        .describe('Absender, z. B. "Name <a@b.de>" (sonst Standardkonto)'),
+    },
+  },
+  (args) => run(() => createDraft(args))
 );
 
 const transport = new StdioServerTransport();

@@ -16,6 +16,7 @@ Installation und Registrierung: siehe [Wurzel-README](../../README.md).
 | `save_attachment` | Ersten passenden PDF-Anhang (Name enthält Schlüssel, endet auf .pdf) speichern |
 | `get_message_body` | Klartext-Inhalt der ersten passenden Nachricht lesen (für Belege ohne PDF) |
 | `flag_message` | Fahne an genau einer Nachricht setzen/entfernen, optional mit Farbe; bei mehrdeutigem Schlüssel passiert nichts |
+| `create_draft` | E-Mail-Entwurf anlegen und sichtbar in Mail öffnen — sendet nicht, das Abschicken machst du selbst |
 
 ## Konfiguration
 
