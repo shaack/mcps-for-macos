@@ -47,9 +47,10 @@ server.registerTool(
     title: "Nachrichten suchen",
     description:
       "Sucht Nachrichten in einem Zeitfenster und listet Treffer samt Anhangnamen " +
-      "(ATT{...}) und Flaggen-Markierung (⚑). So sieht man sofort, was als PDF vorliegt. " +
-      "Filtert nach Absender-Stichworten und/oder nur geflaggten Nachrichten; ohne einen " +
-      "der beiden Filter käme alles zurück. Dedupliziert über die message id.",
+      "(ATT{...}) und Flaggen-Markierung (⚑ plus Farbname). So sieht man sofort, was als " +
+      "PDF vorliegt. Filtert nach Absender-Stichworten, nur geflaggten Nachrichten und/oder " +
+      "einer bestimmten Fahnenfarbe (flagColor); ohne einen dieser Filter käme alles zurück. " +
+      "Dedupliziert über die message id.",
     inputSchema: {
       vendors: z
         .array(z.string())
@@ -69,6 +70,16 @@ server.registerTool(
         .boolean()
         .optional()
         .describe("Nur geflaggte Nachrichten (flagged status is true). Ohne vendors nutzbar."),
+      flagColor: z
+        .number()
+        .int()
+        .min(0)
+        .max(6)
+        .optional()
+        .describe(
+          "Nur Nachrichten mit dieser Fahnenfarbe (0=rot, 1=orange, 2=gelb, 3=grün, " +
+            "4=blau, 5=lila, 6=grau). Impliziert geflaggt und ist allein nutzbar."
+        ),
       mailboxes: z
         .array(z.string())
         .optional()

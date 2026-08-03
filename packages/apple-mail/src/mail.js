@@ -50,15 +50,23 @@ end tell`;
  * @param {string} opts.fromDate Startdatum YYYY-MM-DD (inklusive)
  * @param {number} [opts.days=91] Länge des Zeitfensters in Tagen
  * @param {boolean} [opts.flaggedOnly=false] nur geflaggte Nachrichten
+ * @param {number|null} [opts.flagColor=null] nur Nachrichten mit dieser Fahnenfarbe (flagIndex 0-6: rot, orange, gelb, grün, blau, lila, grau); impliziert geflaggt
  * @param {string[]} [opts.mailboxes] Mailboxen "<Konto>:<Mailbox>"
  * @returns {Promise<string>}
  */
-export function searchMessages({ vendors = [], fromDate, days = 91, flaggedOnly = false, mailboxes = DEFAULT_MAILBOXES }) {
+export function searchMessages({ vendors = [], fromDate, days = 91, flaggedOnly = false, flagColor = null, mailboxes = DEFAULT_MAILBOXES }) {
   const hasVendors = Array.isArray(vendors) && vendors.length > 0;
-  if (!hasVendors && !flaggedOnly) {
-    throw new Error("Mindestens vendors oder flaggedOnly angeben, sonst käme alles zurück.");
+  const hasColor = flagColor !== null;
+  if (hasColor && (!Number.isInteger(flagColor) || flagColor < 0 || flagColor > 6)) {
+    throw new Error("flagColor muss eine ganze Zahl 0-6 sein (0=rot, 1=orange, 2=gelb, 3=grün, 4=blau, 5=lila, 6=grau).");
   }
+  if (!hasVendors && !flaggedOnly && !hasColor) {
+    throw new Error("Mindestens vendors, flaggedOnly oder flagColor angeben, sonst käme alles zurück.");
+  }
+  // flagColor filtert bereits auf eine konkrete Farbe (und damit auf geflaggt);
+  // flaggedOnly ist dann redundant, schadet aber nicht.
   const flaggedCond = flaggedOnly ? " and (flagged status is true)" : "";
+  const colorCond = hasColor ? ` and (flag index is ${flagColor})` : "";
 
   // Ausgabezeile je Treffer, in beiden Zweigen identisch.
   const emit = `            set mid to (message id of m)
@@ -68,7 +76,14 @@ export function searchMessages({ vendors = [], fromDate, days = 91, flaggedOnly 
               set attStr to ""
               if (count of atts) > 0 then set attStr to "  ATT{" & (atts as string) & "}"
               set flagStr to ""
-              if (flagged status of m) then set flagStr to "  ⚑"
+              if (flagged status of m) then
+                set fi to (flag index of m)
+                if fi ≥ 0 and fi ≤ 6 then
+                  set flagStr to "  ⚑ " & (item (fi + 1) of flagNames)
+                else
+                  set flagStr to "  ⚑"
+                end if
+              end if
               set dr to (date received of m)
               set out to out & ((year of dr) as string) & "-" ¬
                 & (text -2 thru -1 of ("0" & ((month of dr as integer)))) & "-" ¬
@@ -85,7 +100,7 @@ export function searchMessages({ vendors = [], fromDate, days = 91, flaggedOnly 
           set msgs to {}
           try
             set msgs to (messages of mb whose (date received ≥ d1) ¬
-              and (date received < d2)${flaggedCond} and (sender contains vv))
+              and (date received < d2)${flaggedCond}${colorCond} and (sender contains vv))
           end try
           repeat with m in msgs
 ${emit}
@@ -95,7 +110,7 @@ ${emit}
         set msgs to {}
         try
           set msgs to (messages of mb whose (date received ≥ d1) ¬
-            and (date received < d2)${flaggedCond})
+            and (date received < d2)${flaggedCond}${colorCond})
         end try
         repeat with m in msgs
 ${emit}
@@ -107,6 +122,8 @@ set d2 to d1 + (${Number(days)} * days)
 
 set vendors to ${asList(hasVendors ? vendors : [])}
 set wanted to ${asList(mailboxes)}
+
+set flagNames to {"rot", "orange", "gelb", "grün", "blau", "lila", "grau"}
 
 tell application "Mail"
   set seen to {}
