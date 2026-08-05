@@ -153,8 +153,13 @@ server.registerTool(
       "(flagIndex 0-6: rot, orange, gelb, grün, blau, lila, grau). Passt der Schlüssel " +
       "auf mehrere Nachrichten, wird nichts geändert und die Mehrdeutigkeit gemeldet " +
       "(Schlüssel verengen). Praktisch, um eine verarbeitete Rechnung zu markieren. " +
-      "Mindestens subjKey oder senderKey angeben. Verändert die Nachricht.",
+      "Mindestens messageId, subjKey oder senderKey angeben; messageId hat Vorrang. " +
+      "Verändert die Nachricht.",
     inputSchema: {
+      messageId: z
+        .string()
+        .optional()
+        .describe('message id (rohe id, "<id>" oder "message:%3Cid%3E"-URL); eindeutigste Referenz'),
       subjKey: z.string().optional().describe("Teilstring, der im Betreff vorkommen muss"),
       senderKey: z.string().optional().describe("Teilstring, der im Absender vorkommen muss"),
       flagged: z
@@ -211,8 +216,12 @@ server.registerTool(
       "Original als \">\"-Zitat mit Attributionszeile ersetzt. Mail fügt dabei KEINE " +
       "Konto-Signatur an, die Signatur gehört mit in body. Sendet bewusst NICHT. " +
       "Bei mehreren Treffern wird ohne pickLatest abgelehnt. " +
-      "Mindestens subjKey oder senderKey angeben.",
+      "Mindestens messageId, subjKey oder senderKey angeben; messageId hat Vorrang.",
     inputSchema: {
+      messageId: z
+        .string()
+        .optional()
+        .describe('message id der Original-Mail (rohe id, "<id>" oder "message:%3Cid%3E"-URL); eindeutigste Referenz'),
       subjKey: z.string().optional().describe("Teilstring im Betreff der Original-Mail"),
       senderKey: z.string().optional().describe("Teilstring im Absender der Original-Mail"),
       body: z

@@ -266,14 +266,7 @@ end tell`;
  * @returns {Promise<string>}
  */
 export async function getMessageById({ messageId, mailboxes = DEFAULT_MAILBOXES, maxChars = 20000 }) {
-  let id = String(messageId ?? "").trim();
-  id = id.replace(/^message:(\/\/)?/i, "");
-  try {
-    id = decodeURIComponent(id);
-  } catch {
-    // schon dekodiert (z. B. nacktes "<id>" mit %-fremden Zeichen) — so lassen
-  }
-  id = id.replace(/^</, "").replace(/>$/, "");
+  const id = normalizeMessageId(messageId);
   if (!id) throw new Error("messageId angeben.");
   const script = `
 set theId to ${asStr(id)}
@@ -309,17 +302,38 @@ end tell`;
 }
 
 /**
- * Baut eine AppleScript-whose-Bedingung aus Betreff- und/oder Absender-Schlüssel.
- * Mindestens einer muss gesetzt sein.
+ * Normalisiert eine message id: akzeptiert die rohe id, "<id>" und die
+ * klickbare "message:%3Cid%3E"-URL, liefert die nackte id ohne Klammern.
+ * @param {string} raw
+ * @returns {string}
+ */
+function normalizeMessageId(raw) {
+  let id = String(raw ?? "").trim();
+  id = id.replace(/^message:(\/\/)?/i, "");
+  try {
+    id = decodeURIComponent(id);
+  } catch {
+    // schon dekodiert (z. B. nacktes "<id>" mit %-fremden Zeichen) — so lassen
+  }
+  return id.replace(/^</, "").replace(/>$/, "");
+}
+
+/**
+ * Baut eine AppleScript-whose-Bedingung: entweder exakt über die message id
+ * (hat Vorrang) oder aus Betreff- und/oder Absender-Schlüssel. Mindestens
+ * eines von messageId, subjKey, senderKey muss gesetzt sein.
  * @param {string} subjKey
  * @param {string} senderKey
+ * @param {string} [messageId]
  * @returns {string} AppleScript-Bedingung (Code, kein String-Literal)
  */
-function subjectSenderCond(subjKey, senderKey) {
+function subjectSenderCond(subjKey, senderKey, messageId = "") {
+  const id = normalizeMessageId(messageId);
+  if (id) return `(message id is ${asStr(id)})`;
   const parts = [];
   if (subjKey) parts.push(`(subject contains ${asStr(subjKey)})`);
   if (senderKey) parts.push(`(sender contains ${asStr(senderKey)})`);
-  if (parts.length === 0) throw new Error("subjKey oder senderKey angeben.");
+  if (parts.length === 0) throw new Error("messageId, subjKey oder senderKey angeben.");
   return parts.join(" and ");
 }
 
@@ -382,8 +396,8 @@ end tell`;
  * @param {string[]} [opts.mailboxes] Mailboxen "<Konto>:<Mailbox>"
  * @returns {Promise<string>} "flagged: <Betreff>", "not found" oder "ambiguous: ..."
  */
-export function flagMessage({ subjKey = "", senderKey = "", flagged = true, flagIndex = null, mailboxes = DEFAULT_MAILBOXES }) {
-  const cond = subjectSenderCond(subjKey, senderKey);
+export function flagMessage({ messageId = "", subjKey = "", senderKey = "", flagged = true, flagIndex = null, mailboxes = DEFAULT_MAILBOXES }) {
+  const cond = subjectSenderCond(subjKey, senderKey, messageId);
   if (flagIndex !== null && (!Number.isInteger(flagIndex) || flagIndex < 0 || flagIndex > 6)) {
     throw new Error("flagIndex muss eine ganze Zahl 0-6 sein.");
   }
@@ -448,8 +462,8 @@ end tell`;
  * @param {string[]} [opts.mailboxes] Mailboxen "<Konto>:<Mailbox>"
  * @returns {Promise<string>} "reply draft created: <Betreff>", "not found" oder "ambiguous: ..."
  */
-export function replyDraft({ subjKey = "", senderKey = "", body = "", replyAll = false, pickLatest = false, from = "", mailboxes = DEFAULT_MAILBOXES }) {
-  const cond = subjectSenderCond(subjKey, senderKey);
+export function replyDraft({ messageId = "", subjKey = "", senderKey = "", body = "", replyAll = false, pickLatest = false, from = "", mailboxes = DEFAULT_MAILBOXES }) {
+  const cond = subjectSenderCond(subjKey, senderKey, messageId);
   const script = `
 set bod to ${asStr(body)}
 set wanted to ${asList(mailboxes)}
