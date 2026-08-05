@@ -9,6 +9,7 @@ import {
   getMessageBody,
   flagMessage,
   createDraft,
+  replyDraft,
   DEFAULT_MAILBOXES,
 } from "./mail.js";
 
@@ -195,6 +196,43 @@ server.registerTool(
     },
   },
   (args) => run(() => createDraft(args))
+);
+
+server.registerTool(
+  "reply_draft",
+  {
+    title: "Antwort-Entwurf anlegen",
+    description:
+      "Legt einen ANTWORT-Entwurf auf genau eine per subjKey/senderKey gefundene " +
+      "Nachricht an und öffnet ihn sichtbar in Mail. Nutzt Mails natives Reply " +
+      "(Empfänger, \"Re:\"-Betreff, Threading), der Inhalt wird durch body plus das " +
+      "Original als \">\"-Zitat mit Attributionszeile ersetzt. Mail fügt dabei KEINE " +
+      "Konto-Signatur an, die Signatur gehört mit in body. Sendet bewusst NICHT. " +
+      "Bei mehreren Treffern wird ohne pickLatest abgelehnt. " +
+      "Mindestens subjKey oder senderKey angeben.",
+    inputSchema: {
+      subjKey: z.string().optional().describe("Teilstring im Betreff der Original-Mail"),
+      senderKey: z.string().optional().describe("Teilstring im Absender der Original-Mail"),
+      body: z
+        .string()
+        .optional()
+        .describe("Antworttext (Klartext, inkl. Grußformel und Signatur)"),
+      replyAll: z.boolean().optional().describe("Allen antworten statt nur dem Absender"),
+      pickLatest: z
+        .boolean()
+        .optional()
+        .describe("Bei mehreren Treffern die neueste Nachricht nehmen statt abzulehnen"),
+      from: z
+        .string()
+        .optional()
+        .describe('Absender erzwingen, z. B. "Name <a@b.de>" (sonst wählt Mail das Empfängerkonto)'),
+      mailboxes: z
+        .array(z.string())
+        .optional()
+        .describe("Zu durchsuchende Mailboxen. Vorgabe wie bei search_messages."),
+    },
+  },
+  (args) => run(() => replyDraft(args))
 );
 
 const transport = new StdioServerTransport();
