@@ -40,7 +40,7 @@ server.registerTool(
     description:
       "Exportiert die Umsätze eines Kontos in einem Zeitraum. Das plist enthält " +
       "bookingDate, amount, name und purpose je Buchung, in Buchungsreihenfolge je " +
-      "Tag. Das ist die Soll-Liste der Abbuchungen für den Rechnungsabgleich. " +
+      "Tag. Grundlage für Auswertungen, Abgleiche oder Weiterverarbeitung. " +
       "MoneyMoney muss entsperrt sein.",
     inputSchema: {
       account: z.string().describe('Exakter Kontoname, z. B. "My Checking Account" (siehe export_accounts)'),

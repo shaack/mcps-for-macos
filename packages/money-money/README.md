@@ -1,8 +1,8 @@
 # @mcps/money-money
 
-MCP-Server, der MoneyMoney per AppleScript kapselt. Liefert die Soll-Liste der
-Abbuchungen für den Rechnungsabgleich: MoneyMoney gibt die Buchungstage,
-[`@mcps/apple-mail`](../apple-mail) die PDFs.
+MCP-Server, der MoneyMoney per AppleScript kapselt. Liefert Kontenliste und
+Umsätze als plist oder CSV, als Rohdaten für Auswertungen, Abgleiche oder
+Weiterverarbeitung.
 
 Installation und Registrierung: siehe [Wurzel-README](../../README.md).
 
@@ -24,5 +24,6 @@ sie durch).
 1. `export_accounts` für den exakten Kontonamen.
 2. `export_transactions` mit `account`, `fromDate`, `toDate`. Das plist enthält je
    Buchung bookingDate, amount, name und purpose, in Buchungsreihenfolge je Tag.
-3. Danach mit `@mcps/apple-mail` die passenden PDF-Rechnungen sammeln und gegen
-   diese Liste abhaken. Maßgeblich ist der Abbuchungstag, nicht das Rechnungsdatum.
+3. Die Buchungen weiterverarbeiten, etwa gegen Belege abgleichen, die
+   [`@mcps/apple-mail`](../apple-mail) aus dem Postfach holt. Bei einem solchen
+   Abgleich zählt der Abbuchungstag, nicht das Datum auf dem Dokument.

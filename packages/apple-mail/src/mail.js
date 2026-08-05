@@ -41,12 +41,13 @@ end tell`;
  * (ATT{...}) und Flaggen-Markierung (⚑). Dedupliziert über die message id (Gmail
  * zeigt dieselbe Mail in INBOX und All Mail).
  *
- * Filtert nach Absender-Stichworten (`vendors`) und/oder nur geflaggten
- * Nachrichten (`flaggedOnly`). Ohne einen der beiden Filter käme alles zurück,
- * das wird abgelehnt.
+ * Filtert nach Absender-Stichworten (`senderKeys`), nur geflaggten Nachrichten
+ * (`flaggedOnly`) und/oder einer Fahnenfarbe (`flagColor`). Ohne einen dieser
+ * Filter käme alles zurück, das wird abgelehnt.
  *
  * @param {object} opts
- * @param {string[]} [opts.vendors] Absender-Stichworte (z. B. ["hosting", "software-vendor"])
+ * @param {string[]} [opts.senderKeys] Absender-Stichworte, z. B. ["example.com", "Meier"]
+ * @param {string[]} [opts.vendors] veralteter Name für `senderKeys`; greift nur, wenn `senderKeys` leer ist
  * @param {string} opts.fromDate Startdatum YYYY-MM-DD (inklusive)
  * @param {number} [opts.days=91] Länge des Zeitfensters in Tagen
  * @param {boolean} [opts.flaggedOnly=false] nur geflaggte Nachrichten
@@ -54,14 +55,17 @@ end tell`;
  * @param {string[]} [opts.mailboxes] Mailboxen "<Konto>:<Mailbox>"
  * @returns {Promise<string>}
  */
-export function searchMessages({ vendors = [], fromDate, days = 91, flaggedOnly = false, flagColor = null, mailboxes = DEFAULT_MAILBOXES }) {
-  const hasVendors = Array.isArray(vendors) && vendors.length > 0;
+export function searchMessages({ senderKeys = [], vendors = [], fromDate, days = 91, flaggedOnly = false, flagColor = null, mailboxes = DEFAULT_MAILBOXES }) {
+  // `vendors` ist der alte, auf Rechnungen gemünzte Name. Weiter akzeptiert,
+  // damit bestehende Aufrufe nicht brechen.
+  const keys = (Array.isArray(senderKeys) && senderKeys.length > 0) ? senderKeys : vendors;
+  const hasKeys = Array.isArray(keys) && keys.length > 0;
   const hasColor = flagColor !== null;
   if (hasColor && (!Number.isInteger(flagColor) || flagColor < 0 || flagColor > 6)) {
     throw new Error("flagColor muss eine ganze Zahl 0-6 sein (0=rot, 1=orange, 2=gelb, 3=grün, 4=blau, 5=lila, 6=grau).");
   }
-  if (!hasVendors && !flaggedOnly && !hasColor) {
-    throw new Error("Mindestens vendors, flaggedOnly oder flagColor angeben, sonst käme alles zurück.");
+  if (!hasKeys && !flaggedOnly && !hasColor) {
+    throw new Error("Mindestens senderKeys, flaggedOnly oder flagColor angeben, sonst käme alles zurück.");
   }
   // flagColor filtert bereits auf eine konkrete Farbe (und damit auf geflaggt);
   // flaggedOnly ist dann redundant, schadet aber nicht.
@@ -91,10 +95,10 @@ export function searchMessages({ vendors = [], fromDate, days = 91, flaggedOnly 
                 & " | " & lbl & " | " & (subject of m) & attStr & flagStr & linefeed
             end if`;
 
-  // Mit vendors: je Stichwort eine whose-Abfrage. Ohne vendors: eine Abfrage
+  // Mit Stichworten: je Stichwort eine whose-Abfrage. Ohne: eine Abfrage
   // nur mit Zeitfenster (und ggf. flagged), Label "flagged".
-  const inner = hasVendors
-    ? `        repeat with v in vendors
+  const inner = hasKeys
+    ? `        repeat with v in senderKeys
           set vv to (v as string)
           set lbl to vv
           set msgs to {}
@@ -120,7 +124,7 @@ ${emit}
 ${dateSetter("d1", fromDate)}
 set d2 to d1 + (${Number(days)} * days)
 
-set vendors to ${asList(hasVendors ? vendors : [])}
+set senderKeys to ${asList(hasKeys ? keys : [])}
 set wanted to ${asList(mailboxes)}
 
 set flagNames to {"rot", "orange", "gelb", "grün", "blau", "lila", "grau"}
@@ -141,19 +145,26 @@ end tell`;
 }
 
 /**
- * Speichert den ersten passenden PDF-Anhang. Ein Anhang passt, wenn sein Name
- * `attKey` enthält und auf .pdf endet (so werden AGB, Werbe-PDFs, XML und Bilder
- * aussortiert). Die Nachricht wird über `subjKey` im Betreff gefunden.
+ * Speichert den ersten passenden Anhang unter einem festen Zielpfad. Ein Anhang
+ * passt, wenn sein Name `attKey` enthält und auf `endsWith` endet. Die
+ * Nachricht wird über `subjKey` im Betreff gefunden.
+ *
+ * `endsWith` steht auf ".pdf", weil das der häufigste Fall ist und so Bilder,
+ * XML-Beiwerk und Signaturdateien nicht versehentlich mitkommen. Leer setzen
+ * hebt die Einschränkung auf. Für alle Anhänge einer eindeutig bestimmten
+ * Nachricht ist saveAttachmentsById der direktere Weg.
  *
  * @param {object} opts
  * @param {string} opts.subjKey Teilstring, der im Betreff vorkommen muss
  * @param {string} opts.attKey Teilstring, der im Anhangnamen vorkommen muss
  * @param {string} opts.destPath Zielpfad (POSIX, absolut). Elternordner wird angelegt.
+ * @param {string} [opts.endsWith=".pdf"] Endung, auf die der Anhangname enden muss; "" für beliebige
  * @param {string[]} [opts.mailboxes] Mailboxen "<Konto>:<Mailbox>"
  * @returns {Promise<string>} "saved: <pfad>" oder "not found"
  */
-export async function saveAttachment({ subjKey, attKey, destPath, mailboxes = DEFAULT_MAILBOXES }) {
+export async function saveAttachment({ subjKey, attKey, destPath, endsWith = ".pdf", mailboxes = DEFAULT_MAILBOXES }) {
   await mkdir(dirname(destPath), { recursive: true });
+  const extCond = endsWith ? ` and ((name of a) ends with ${asStr(endsWith)})` : "";
   const script = `
 set subjKey to ${asStr(subjKey)}
 set attKey to ${asStr(attKey)}
@@ -173,7 +184,7 @@ tell application "Mail"
           repeat with m in hits
             if not done then
               repeat with a in (every mail attachment of m)
-                if ((name of a) contains attKey) and ((name of a) ends with ".pdf") then
+                if ((name of a) contains attKey)${extCond} then
                   save a in (POSIX file destPath)
                   set done to true
                   exit repeat
@@ -202,8 +213,8 @@ end tell`;
  * get_message_by_id, reply_draft, flag_message, mark_read und move_message.
  *
  * Bewusst ohne Pflichtfilter, gedacht für kleine Postfächer oder kurze
- * Zeiträume; dedupliziert über die message id, neueste zuerst. Mit
- * `unreadOnly` wird die Liste zur Arbeitsliste ("was ist neu?").
+ * Zeiträume; dedupliziert über die message id, neueste zuerst. `unreadOnly`
+ * schränkt auf Ungelesenes ein.
  *
  * @param {object} opts
  * @param {string} [opts.fromDate] Startdatum YYYY-MM-DD (inklusive); ohne
@@ -278,8 +289,8 @@ end tell`;
 
 /**
  * Setzt Nachrichten auf gelesen oder ungelesen. Adressiert entweder genau eine
- * Nachricht über die message id oder — mit `allInWindow` — alle Nachrichten
- * eines Zeitfensters (praktisch, um eine abgearbeitete Queue zu leeren).
+ * Nachricht über die message id oder, mit `allInWindow`, alle Nachrichten
+ * eines Zeitfensters.
  *
  * @param {object} opts
  * @param {string} [opts.messageId] message id (rohe id, "<id>" oder message:-URL)
@@ -334,10 +345,10 @@ end tell`;
 }
 
 /**
- * Speichert Anhänge einer über die message id bestimmten Nachricht in einen
- * Ordner. Anders als save_attachment ohne PDF-Einschränkung, also auch für die
- * Screenshots, die Nutzer an Support-Anfragen hängen. Mit `nameKey` lässt sich
- * auf bestimmte Anhänge einschränken.
+ * Speichert die Anhänge einer über die message id bestimmten Nachricht in
+ * einen Ordner, unabhängig vom Dateityp. Mit `nameKey` lässt sich auf bestimmte
+ * Anhänge einschränken. Anders als saveAttachment adressiert das die Nachricht
+ * eindeutig und speichert alle Treffer statt nur den ersten.
  *
  * @param {object} opts
  * @param {string} opts.messageId message id (rohe id, "<id>" oder message:-URL)
@@ -400,8 +411,8 @@ end tell`;
  * "YYYY-MM-DD HH:MM | ← bzw. → | Betreff | message:%3Cid%3E".
  *
  * Die Richtung ergibt sich daraus, ob der Absender eine der eigenen
- * Konto-Adressen ist. Damit sieht man vor einer Support-Antwort den ganzen
- * Verlauf, ohne Posteingang und Gesendet einzeln abzufragen.
+ * Konto-Adressen ist. Damit sieht man den ganzen Verlauf, ohne Posteingang und
+ * Gesendet einzeln abzufragen.
  *
  * @param {object} opts
  * @param {string} opts.addressKey Adresse oder Teilstring, z. B. "jokaste@t-online.de"
@@ -474,17 +485,16 @@ end tell`;
 
 /**
  * Verschiebt eine über die message id bestimmte Nachricht in eine andere
- * Mailbox, z. B. eine erledigte Support-Anfrage nach "Erledigt". Fehlt der
- * Zielordner, wird er im selben Konto angelegt (abschaltbar über
- * `createIfMissing`).
+ * Mailbox, etwa in einen Ablage- oder Archivordner. Fehlt der Zielordner, wird
+ * er im selben Konto angelegt (abschaltbar über `createIfMissing`).
  *
- * `targetMailbox` ist entweder ein blosser Name ("Erledigt", dann im Konto der
- * Nachricht) oder vollqualifiziert "<Konto>:<Mailbox>". Verschieben über
+ * `targetMailbox` ist entweder ein blosser Name (dann im Konto der Nachricht)
+ * oder vollqualifiziert "<Konto>:<Mailbox>". Verschieben über
  * Kontogrenzen hinweg macht Mail selbst, kann bei IMAP aber dauern.
  *
  * @param {object} opts
  * @param {string} opts.messageId message id (rohe id, "<id>" oder message:-URL)
- * @param {string} opts.targetMailbox Zielmailbox, "Erledigt" oder "<Konto>:<Mailbox>"
+ * @param {string} opts.targetMailbox Zielmailbox, blosser Name oder "<Konto>:<Mailbox>"
  * @param {boolean} [opts.createIfMissing=true] Zielmailbox anlegen, wenn sie fehlt
  * @param {string[]} [opts.mailboxes] zu durchsuchende Mailboxen "<Konto>:<Mailbox>"
  * @returns {Promise<string>} "moved: <Betreff> -> <Konto>:<Mailbox>" oder "not found"
@@ -622,7 +632,8 @@ function subjectSenderCond(subjKey, senderKey, messageId = "") {
 
 /**
  * Liefert den Klartext-Inhalt der ersten passenden Nachricht samt Kopf (From,
- * Subject, Date). Für Belege, die nur im Mailtext stehen und kein PDF anhängen.
+ * Subject, Date). Für Inhalte, die im Mailtext selbst stehen und nicht als
+ * Anhang.
  *
  * @param {object} opts
  * @param {string} [opts.subjKey] Teilstring im Betreff
@@ -733,7 +744,7 @@ end tell`;
  * wird ohne `pickLatest` nichts angelegt, sondern die Mehrdeutigkeit gemeldet.
  *
  * Hinweis: Da der Inhalt ersetzt wird, fügt Mail KEINE Konto-Signatur an;
- * die Signatur gehört mit in `body`.
+ * eine gewünschte Signatur gehört mit in `body`.
  *
  * @param {object} opts
  * @param {string} [opts.subjKey] Teilstring im Betreff der Original-Mail

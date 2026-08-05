@@ -54,15 +54,20 @@ server.registerTool(
     title: "Nachrichten suchen",
     description:
       "Sucht Nachrichten in einem Zeitfenster und listet Treffer samt Anhangnamen " +
-      "(ATT{...}) und Flaggen-Markierung (⚑ plus Farbname). So sieht man sofort, was als " +
-      "PDF vorliegt. Filtert nach Absender-Stichworten, nur geflaggten Nachrichten und/oder " +
-      "einer bestimmten Fahnenfarbe (flagColor); ohne einen dieser Filter käme alles zurück. " +
-      "Dedupliziert über die message id.",
+      "(ATT{...}) und Flaggen-Markierung (⚑ plus Farbname). Filtert nach " +
+      "Absender-Stichworten, nur geflaggten Nachrichten und/oder einer bestimmten " +
+      "Fahnenfarbe (flagColor); ohne einen dieser Filter käme alles zurück. " +
+      "Dedupliziert über die message id. Für ein Zeitfenster ohne Filter, mit " +
+      "Lesestatus und message id je Zeile, ist list_messages der passendere Weg.",
     inputSchema: {
+      senderKeys: z
+        .array(z.string())
+        .optional()
+        .describe('Absender-Stichworte, z. B. ["example.com", "Meier"]. Weglassen, um nur nach flaggedOnly oder flagColor zu filtern.'),
       vendors: z
         .array(z.string())
         .optional()
-        .describe('Absender-Stichworte, z. B. ["hosting", "software-vendor"]. Weglassen, um nur nach flaggedOnly zu filtern.'),
+        .describe("Veralteter Name für senderKeys; greift nur, wenn senderKeys leer ist."),
       fromDate: z
         .string()
         .regex(/^\d{4}-\d{2}-\d{2}$/)
@@ -76,7 +81,7 @@ server.registerTool(
       flaggedOnly: z
         .boolean()
         .optional()
-        .describe("Nur geflaggte Nachrichten (flagged status is true). Ohne vendors nutzbar."),
+        .describe("Nur geflaggte Nachrichten (flagged status is true). Ohne senderKeys nutzbar."),
       flagColor: z
         .number()
         .int()
@@ -104,15 +109,21 @@ server.registerTool(
   {
     title: "Anhang speichern",
     description:
-      "Speichert den ersten passenden PDF-Anhang einer über den Betreff gefundenen " +
-      "Nachricht. Ein Anhang passt nur, wenn sein Name attKey enthält und auf .pdf endet " +
-      "(sortiert AGB, Werbe-PDFs, XML und Bilder aus). Der Zielordner wird angelegt.",
+      "Speichert den ersten passenden Anhang einer über den Betreff gefundenen " +
+      "Nachricht unter einem festen Zielpfad. Ein Anhang passt, wenn sein Name attKey " +
+      "enthält und auf endsWith endet (Vorgabe \".pdf\", damit Bilder und Beiwerk nicht " +
+      "mitkommen; leer setzen hebt das auf). Der Zielordner wird angelegt. Für alle " +
+      "Anhänge einer eindeutig bestimmten Nachricht: save_attachments_by_id.",
     inputSchema: {
       subjKey: z.string().describe("Teilstring, der im Betreff vorkommen muss"),
       attKey: z.string().describe("Teilstring, der im Anhangnamen vorkommen muss"),
       destPath: z
         .string()
-        .describe("Absoluter Zielpfad, z. B. /path/to/2026-04/2026-04-14 Anbieter Rechnung.pdf"),
+        .describe("Absoluter Zielpfad inklusive Dateiname, z. B. /pfad/zum/ordner/2026-04-14 Dokument.pdf"),
+      endsWith: z
+        .string()
+        .optional()
+        .describe('Endung, auf die der Anhangname enden muss (Vorgabe ".pdf"); "" erlaubt jeden Dateityp'),
       mailboxes: z
         .array(z.string())
         .optional()
@@ -128,8 +139,8 @@ server.registerTool(
     title: "Mailtext lesen",
     description:
       "Liefert den Klartext-Inhalt der ersten passenden Nachricht samt Kopf (From, " +
-      "Subject, Date). Für Belege, die nur im Mailtext stehen und kein PDF anhängen. " +
-      "Mindestens subjKey oder senderKey angeben.",
+      "Subject, Date). Für Inhalte, die im Mailtext selbst stehen und nicht als Anhang. " +
+      "Mindestens subjKey oder senderKey angeben; über die message id geht get_message_by_id.",
     inputSchema: {
       subjKey: z.string().optional().describe("Teilstring, der im Betreff vorkommen muss"),
       senderKey: z.string().optional().describe("Teilstring, der im Absender vorkommen muss"),
@@ -156,7 +167,7 @@ server.registerTool(
       "Setzt oder entfernt die Fahne an GENAU EINER Nachricht, optional mit Farbe " +
       "(flagIndex 0-6: rot, orange, gelb, grün, blau, lila, grau). Passt der Schlüssel " +
       "auf mehrere Nachrichten, wird nichts geändert und die Mehrdeutigkeit gemeldet " +
-      "(Schlüssel verengen). Praktisch, um eine verarbeitete Rechnung zu markieren. " +
+      "(Schlüssel verengen). Praktisch, um bearbeitete Nachrichten zu markieren. " +
       "Mindestens messageId, subjKey oder senderKey angeben; messageId hat Vorrang. " +
       "Verändert die Nachricht.",
     inputSchema: {
@@ -260,8 +271,7 @@ server.registerTool(
       "\"•\" für ungelesen und \"⚑ farbe\" für geflaggt. Die message:-URL ist die eindeutige " +
       "Referenz für get_message_by_id, reply_draft, flag_message, mark_read und move_message. " +
       "Bewusst ohne Pflichtfilter — für kleine Postfächer oder kurze Zeiträume " +
-      "(für breite Suchen search_messages nehmen). Mit unreadOnly wird die Liste zur " +
-      "Arbeitsliste offener Vorgänge.",
+      "(für breite Suchen search_messages nehmen). unreadOnly schränkt auf Ungelesenes ein.",
     inputSchema: {
       fromDate: z
         .string()
@@ -277,7 +287,7 @@ server.registerTool(
       unreadOnly: z
         .boolean()
         .optional()
-        .describe("Nur ungelesene Nachrichten — die offenen Vorgänge"),
+        .describe("Nur ungelesene Nachrichten"),
       mailboxes: z
         .array(z.string())
         .optional()
@@ -319,7 +329,7 @@ server.registerTool(
     description:
       "Setzt Nachrichten auf gelesen (Vorgabe) oder ungelesen. Entweder genau eine " +
       "Nachricht per messageId oder — mit allInWindow — alle Nachrichten eines " +
-      "Zeitfensters, um eine abgearbeitete Queue zu leeren. Verändert die Nachricht.",
+      "Zeitfensters. Verändert die Nachricht.",
     inputSchema: {
       messageId: z
         .string()
@@ -356,9 +366,9 @@ server.registerTool(
     title: "Anhänge einer Nachricht speichern",
     description:
       "Speichert die Anhänge der über die message id bestimmten Nachricht in einen " +
-      "Ordner — anders als save_attachment ohne PDF-Einschränkung, also auch für " +
-      "Screenshots aus Support-Anfragen (danach mit dem Read-Tool ansehbar). " +
-      "Mit nameKey lässt sich auf bestimmte Anhänge einschränken.",
+      "Ordner, unabhängig vom Dateityp (Bilder danach mit dem Read-Tool ansehbar). " +
+      "Mit nameKey lässt sich auf bestimmte Anhänge einschränken. Anders als " +
+      "save_attachment adressiert das die Nachricht eindeutig und speichert alle Treffer.",
     inputSchema: {
       messageId: z.string().describe('message id (rohe id, "<id>" oder "message:%3Cid%3E"-URL)'),
       destDir: z.string().describe("Zielordner (POSIX, absolut). Wird angelegt."),
@@ -382,13 +392,13 @@ server.registerTool(
     description:
       "Listet den gesamten Schriftwechsel mit einer Adresse chronologisch (älteste " +
       "zuerst), eingegangene und selbst gesendete Nachrichten gemeinsam: " +
-      "\"YYYY-MM-DD HH:MM | ← bzw. → | Betreff | message:%3Cid%3E\". Damit sieht man " +
-      "vor einer Support-Antwort den ganzen Verlauf. In mailboxes gehören dafür " +
+      "\"YYYY-MM-DD HH:MM | ← bzw. → | Betreff | message:%3Cid%3E\". Damit sieht man den " +
+      "ganzen Verlauf mit einem Gegenüber auf einen Blick. In mailboxes gehören dafür " +
       "Posteingang, Archiv UND die Gesendet-Ordner.",
     inputSchema: {
       addressKey: z
         .string()
-        .describe('Adresse oder Teilstring, z. B. "jokaste@t-online.de"'),
+        .describe('Adresse oder Teilstring, z. B. "person@example.com"'),
       days: z
         .number()
         .int()
@@ -410,14 +420,14 @@ server.registerTool(
     title: "Nachricht verschieben",
     description:
       "Verschiebt die über die message id bestimmte Nachricht in eine andere Mailbox, " +
-      "z. B. eine erledigte Support-Anfrage nach \"Erledigt\". targetMailbox ist ein " +
-      "blosser Name (dann im Konto der Nachricht) oder \"<Konto>:<Mailbox>\". Fehlt der " +
-      "Ordner, wird er angelegt (createIfMissing). Verändert das Postfach.",
+      "etwa in einen Ablage- oder Archivordner. targetMailbox ist ein blosser Name " +
+      "(dann im Konto der Nachricht) oder \"<Konto>:<Mailbox>\". Fehlt der Ordner, wird " +
+      "er angelegt (createIfMissing). Verändert das Postfach.",
     inputSchema: {
       messageId: z.string().describe('message id (rohe id, "<id>" oder "message:%3Cid%3E"-URL)'),
       targetMailbox: z
         .string()
-        .describe('Zielmailbox, z. B. "Erledigt" oder "contact@example.com:Erledigt"'),
+        .describe('Zielmailbox, z. B. "Archiv" oder "person@example.com:Archiv"'),
       createIfMissing: z
         .boolean()
         .optional()

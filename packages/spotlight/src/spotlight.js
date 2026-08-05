@@ -5,7 +5,7 @@ import { run } from "@mcps/common";
  *   - text:  Freitext (Volltext + Metadaten), z. B. "Quartalsbericht"
  *   - name:  Teilstring im Dateinamen (mdfind -name)
  *   - query: rohe Spotlight-Abfrage, z. B.
- *            'kMDItemContentType == "com.adobe.pdf" && kMDItemFSName == "*Rechnung*"c'
+ *            'kMDItemContentType == "com.adobe.pdf" && kMDItemFSName == "*bericht*"c'
  *
  * @param {object} opts
  * @param {string} [opts.text]

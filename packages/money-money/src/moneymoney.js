@@ -15,8 +15,8 @@ export function exportAccounts() {
 
 /**
  * Exportiert die Umsätze eines Kontos in einem Zeitraum. Das Ergebnis (bei
- * Format plist mit bookingDate, amount, name, purpose) ist die Soll-Liste der
- * Abbuchungen, gegen die die gesammelten Rechnungen abgeglichen werden.
+ * Format plist mit bookingDate, amount, name, purpose) ist die Rohdatenbasis
+ * für Auswertungen und Abgleiche jeder Art.
  * MoneyMoney muss entsperrt sein.
  *
  * @param {object} opts

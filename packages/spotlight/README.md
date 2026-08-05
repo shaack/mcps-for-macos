@@ -28,7 +28,7 @@ stehen nicht als Klartext im Index. Solche Dateien über den **Namen** suchen.
 - `text` — Freitext (Volltext + Metadaten)
 - `name` — Teilstring im Dateinamen
 - `query` — rohe Spotlight-Abfrage, z. B.
-  `kMDItemContentType == "com.adobe.pdf" && kMDItemFSName == "*Rechnung*"c`
+  `kMDItemContentType == "com.adobe.pdf" && kMDItemFSName == "*bericht*"c`
 
 Optional `onlyIn` (auf ein Verzeichnis begrenzen) und `limit` (Vorgabe 50).
 Geschützte Orte brauchen Full Disk Access (siehe Wurzel-README).
