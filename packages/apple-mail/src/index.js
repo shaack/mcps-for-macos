@@ -12,6 +12,10 @@ import {
   replyDraft,
   listMessages,
   getMessageById,
+  markRead,
+  saveAttachmentsById,
+  listCorrespondence,
+  moveMessage,
   DEFAULT_MAILBOXES,
 } from "./mail.js";
 
@@ -251,11 +255,13 @@ server.registerTool(
   {
     title: "Nachrichten auflisten",
     description:
-      "Listet alle Nachrichten eines Zeitfensters, eine Zeile pro Nachricht: " +
-      "\"YYYY-MM-DD HH:MM | Absender | Betreff | message:%3Cid%3E\". Die message:-URL " +
-      "ist die eindeutige Referenz für get_message_by_id und in macOS klickbar. " +
+      "Listet Nachrichten eines Zeitfensters, neueste zuerst, eine Zeile pro Nachricht: " +
+      "\"YYYY-MM-DD HH:MM | Status | Absender | Betreff | message:%3Cid%3E\". Status ist " +
+      "\"•\" für ungelesen und \"⚑ farbe\" für geflaggt. Die message:-URL ist die eindeutige " +
+      "Referenz für get_message_by_id, reply_draft, flag_message, mark_read und move_message. " +
       "Bewusst ohne Pflichtfilter — für kleine Postfächer oder kurze Zeiträume " +
-      "(für breite Suchen search_messages nehmen).",
+      "(für breite Suchen search_messages nehmen). Mit unreadOnly wird die Liste zur " +
+      "Arbeitsliste offener Vorgänge.",
     inputSchema: {
       fromDate: z
         .string()
@@ -268,6 +274,10 @@ server.registerTool(
         .positive()
         .optional()
         .describe("Länge des Zeitfensters in Tagen (Vorgabe 7)"),
+      unreadOnly: z
+        .boolean()
+        .optional()
+        .describe("Nur ungelesene Nachrichten — die offenen Vorgänge"),
       mailboxes: z
         .array(z.string())
         .optional()
@@ -300,6 +310,125 @@ server.registerTool(
     },
   },
   (args) => run(() => getMessageById(args))
+);
+
+server.registerTool(
+  "mark_read",
+  {
+    title: "Als gelesen/ungelesen markieren",
+    description:
+      "Setzt Nachrichten auf gelesen (Vorgabe) oder ungelesen. Entweder genau eine " +
+      "Nachricht per messageId oder — mit allInWindow — alle Nachrichten eines " +
+      "Zeitfensters, um eine abgearbeitete Queue zu leeren. Verändert die Nachricht.",
+    inputSchema: {
+      messageId: z
+        .string()
+        .optional()
+        .describe('message id (rohe id, "<id>" oder "message:%3Cid%3E"-URL)'),
+      read: z.boolean().optional().describe("true = gelesen (Vorgabe), false = ungelesen"),
+      allInWindow: z
+        .boolean()
+        .optional()
+        .describe("Statt einer messageId: alle Nachrichten im Zeitfenster markieren"),
+      fromDate: z
+        .string()
+        .regex(/^\d{4}-\d{2}-\d{2}$/)
+        .optional()
+        .describe("Startdatum YYYY-MM-DD (nur mit allInWindow)"),
+      days: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .describe("Länge des Zeitfensters in Tagen (nur mit allInWindow, Vorgabe 7)"),
+      mailboxes: z
+        .array(z.string())
+        .optional()
+        .describe("Zu durchsuchende Mailboxen. Vorgabe wie bei search_messages."),
+    },
+  },
+  (args) => run(() => markRead(args))
+);
+
+server.registerTool(
+  "save_attachments_by_id",
+  {
+    title: "Anhänge einer Nachricht speichern",
+    description:
+      "Speichert die Anhänge der über die message id bestimmten Nachricht in einen " +
+      "Ordner — anders als save_attachment ohne PDF-Einschränkung, also auch für " +
+      "Screenshots aus Support-Anfragen (danach mit dem Read-Tool ansehbar). " +
+      "Mit nameKey lässt sich auf bestimmte Anhänge einschränken.",
+    inputSchema: {
+      messageId: z.string().describe('message id (rohe id, "<id>" oder "message:%3Cid%3E"-URL)'),
+      destDir: z.string().describe("Zielordner (POSIX, absolut). Wird angelegt."),
+      nameKey: z
+        .string()
+        .optional()
+        .describe("Nur Anhänge, deren Name diesen Teilstring enthält"),
+      mailboxes: z
+        .array(z.string())
+        .optional()
+        .describe("Zu durchsuchende Mailboxen. Vorgabe wie bei search_messages."),
+    },
+  },
+  (args) => run(() => saveAttachmentsById(args))
+);
+
+server.registerTool(
+  "list_correspondence",
+  {
+    title: "Korrespondenz mit einer Adresse",
+    description:
+      "Listet den gesamten Schriftwechsel mit einer Adresse chronologisch (älteste " +
+      "zuerst), eingegangene und selbst gesendete Nachrichten gemeinsam: " +
+      "\"YYYY-MM-DD HH:MM | ← bzw. → | Betreff | message:%3Cid%3E\". Damit sieht man " +
+      "vor einer Support-Antwort den ganzen Verlauf. In mailboxes gehören dafür " +
+      "Posteingang, Archiv UND die Gesendet-Ordner.",
+    inputSchema: {
+      addressKey: z
+        .string()
+        .describe('Adresse oder Teilstring, z. B. "jokaste@t-online.de"'),
+      days: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .describe("Wie weit zurück gesucht wird (Vorgabe 365)"),
+      mailboxes: z
+        .array(z.string())
+        .optional()
+        .describe("Zu durchsuchende Mailboxen, inkl. Gesendet. Vorgabe wie bei search_messages."),
+    },
+  },
+  (args) => run(() => listCorrespondence(args))
+);
+
+server.registerTool(
+  "move_message",
+  {
+    title: "Nachricht verschieben",
+    description:
+      "Verschiebt die über die message id bestimmte Nachricht in eine andere Mailbox, " +
+      "z. B. eine erledigte Support-Anfrage nach \"Erledigt\". targetMailbox ist ein " +
+      "blosser Name (dann im Konto der Nachricht) oder \"<Konto>:<Mailbox>\". Fehlt der " +
+      "Ordner, wird er angelegt (createIfMissing). Verändert das Postfach.",
+    inputSchema: {
+      messageId: z.string().describe('message id (rohe id, "<id>" oder "message:%3Cid%3E"-URL)'),
+      targetMailbox: z
+        .string()
+        .describe('Zielmailbox, z. B. "Erledigt" oder "contact@example.com:Erledigt"'),
+      createIfMissing: z
+        .boolean()
+        .optional()
+        .describe("Zielmailbox anlegen, wenn sie fehlt (Vorgabe true)"),
+      mailboxes: z
+        .array(z.string())
+        .optional()
+        .describe("Zu durchsuchende Mailboxen. Vorgabe wie bei search_messages."),
+    },
+  },
+  (args) => run(() => moveMessage(args))
 );
 
 const transport = new StdioServerTransport();

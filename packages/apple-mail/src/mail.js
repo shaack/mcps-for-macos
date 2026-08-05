@@ -195,28 +195,35 @@ end tell`;
 }
 
 /**
- * Listet alle Nachrichten eines Zeitfensters, eine Zeile pro Nachricht:
- * "YYYY-MM-DD HH:MM | Absender | Betreff | message:%3Cid%3E". Die message:-URL
- * ist in macOS klickbar und dient als eindeutige Referenz für
- * get_message_by_id. Bewusst ohne Pflichtfilter, gedacht für kleine Postfächer
- * oder kurze Zeiträume; dedupliziert über die message id.
+ * Listet Nachrichten eines Zeitfensters, eine Zeile pro Nachricht:
+ * "YYYY-MM-DD HH:MM | Status | Absender | Betreff | message:%3Cid%3E".
+ * Status ist "•" für ungelesen und "⚑ farbe" für geflaggt (beides kombinierbar).
+ * Die message:-URL ist in macOS klickbar und die eindeutige Referenz für
+ * get_message_by_id, reply_draft, flag_message, mark_read und move_message.
+ *
+ * Bewusst ohne Pflichtfilter, gedacht für kleine Postfächer oder kurze
+ * Zeiträume; dedupliziert über die message id, neueste zuerst. Mit
+ * `unreadOnly` wird die Liste zur Arbeitsliste ("was ist neu?").
  *
  * @param {object} opts
  * @param {string} [opts.fromDate] Startdatum YYYY-MM-DD (inklusive); ohne
  *   Angabe zählt das Fenster von heute um `days` zurück
  * @param {number} [opts.days=7] Länge des Zeitfensters in Tagen
+ * @param {boolean} [opts.unreadOnly=false] nur ungelesene Nachrichten
  * @param {string[]} [opts.mailboxes] Mailboxen "<Konto>:<Mailbox>"
  * @returns {Promise<string>}
  */
-export function listMessages({ fromDate = "", days = 7, mailboxes = DEFAULT_MAILBOXES }) {
+export async function listMessages({ fromDate = "", days = 7, unreadOnly = false, mailboxes = DEFAULT_MAILBOXES }) {
   const window = fromDate
     ? `${dateSetter("d1", fromDate)}
 set d2 to d1 + (${Number(days)} * days)`
     : `set d2 to (current date) + (1 * days)
 set d1 to (current date) - (${Number(days)} * days)`;
+  const unreadCond = unreadOnly ? " and (read status is false)" : "";
   const script = `
 ${window}
 set wanted to ${asList(mailboxes)}
+set flagNames to {"rot", "orange", "gelb", "grün", "blau", "lila", "grau"}
 
 tell application "Mail"
   set seen to {}
@@ -226,7 +233,7 @@ tell application "Mail"
       if wanted contains ((name of acc) & ":" & (name of mb)) then
         set hits to {}
         try
-          set hits to (messages of mb whose (date received ≥ d1) and (date received < d2))
+          set hits to (messages of mb whose (date received ≥ d1) and (date received < d2)${unreadCond})
         end try
         repeat with m in hits
           set mid to (message id of m)
@@ -238,7 +245,17 @@ tell application "Mail"
               & (text -2 thru -1 of ("0" & (day of dr))) & " " ¬
               & (text -2 thru -1 of ("0" & (hours of dr))) & ":" ¬
               & (text -2 thru -1 of ("0" & (minutes of dr)))
-            set end of outLines to (dateStr & " | " & (sender of m) & " | " ¬
+            set stat to ""
+            if (read status of m) is false then set stat to "•"
+            if (flagged status of m) then
+              set fi to (flag index of m)
+              if fi ≥ 0 and fi ≤ 6 then
+                set stat to stat & " ⚑ " & (item (fi + 1) of flagNames)
+              else
+                set stat to stat & " ⚑"
+              end if
+            end if
+            set end of outLines to (dateStr & " | " & stat & " | " & (sender of m) & " | " ¬
               & (subject of m) & " | message:%3C" & mid & "%3E")
           end if
         end repeat
@@ -250,6 +267,272 @@ tell application "Mail"
   set out to outLines as string
   set AppleScript's text item delimiters to oldTid
   return out
+end tell`;
+  const raw = await runAppleScript(script);
+  // Sortierung in JS statt AppleScript: die Zeilen beginnen mit
+  // "YYYY-MM-DD HH:MM" und sind damit lexikografisch sortierbar.
+  const lines = raw.split("\n").filter((l) => l.trim() !== "");
+  lines.sort((a, b) => b.localeCompare(a));
+  return lines.join("\n");
+}
+
+/**
+ * Setzt Nachrichten auf gelesen oder ungelesen. Adressiert entweder genau eine
+ * Nachricht über die message id oder — mit `allInWindow` — alle Nachrichten
+ * eines Zeitfensters (praktisch, um eine abgearbeitete Queue zu leeren).
+ *
+ * @param {object} opts
+ * @param {string} [opts.messageId] message id (rohe id, "<id>" oder message:-URL)
+ * @param {boolean} [opts.read=true] true = gelesen, false = ungelesen
+ * @param {boolean} [opts.allInWindow=false] statt einer id: alle Nachrichten im Zeitfenster
+ * @param {string} [opts.fromDate] Startdatum YYYY-MM-DD (nur mit allInWindow)
+ * @param {number} [opts.days=7] Länge des Zeitfensters in Tagen (nur mit allInWindow)
+ * @param {string[]} [opts.mailboxes] Mailboxen "<Konto>:<Mailbox>"
+ * @returns {Promise<string>} "marked read/unread: <n>" oder "not found"
+ */
+export function markRead({ messageId = "", read = true, allInWindow = false, fromDate = "", days = 7, mailboxes = DEFAULT_MAILBOXES }) {
+  const id = normalizeMessageId(messageId);
+  if (!id && !allInWindow) {
+    throw new Error("messageId angeben oder allInWindow setzen.");
+  }
+  const verb = read ? "read" : "unread";
+  const window = allInWindow
+    ? (fromDate
+        ? `${dateSetter("d1", fromDate)}
+set d2 to d1 + (${Number(days)} * days)`
+        : `set d2 to (current date) + (1 * days)
+set d1 to (current date) - (${Number(days)} * days)`)
+    : "";
+  const cond = allInWindow
+    ? `(date received ≥ d1) and (date received < d2)`
+    : `(message id is theId)`;
+  const script = `
+${window}
+${id ? `set theId to ${asStr(id)}` : ""}
+set wanted to ${asList(mailboxes)}
+
+tell application "Mail"
+  set n to 0
+  repeat with acc in accounts
+    repeat with mb in (every mailbox of acc)
+      if wanted contains ((name of acc) & ":" & (name of mb)) then
+        set hits to {}
+        try
+          set hits to (messages of mb whose ${cond})
+        end try
+        repeat with m in hits
+          set read status of m to ${read}
+          set n to n + 1
+        end repeat
+      end if
+    end repeat
+  end repeat
+  if n is 0 then return "not found"
+  return ("marked ${verb}: " & n)
+end tell`;
+  return runAppleScript(script);
+}
+
+/**
+ * Speichert Anhänge einer über die message id bestimmten Nachricht in einen
+ * Ordner. Anders als save_attachment ohne PDF-Einschränkung, also auch für die
+ * Screenshots, die Nutzer an Support-Anfragen hängen. Mit `nameKey` lässt sich
+ * auf bestimmte Anhänge einschränken.
+ *
+ * @param {object} opts
+ * @param {string} opts.messageId message id (rohe id, "<id>" oder message:-URL)
+ * @param {string} opts.destDir Zielordner (POSIX, absolut). Wird angelegt.
+ * @param {string} [opts.nameKey] nur Anhänge, deren Name diesen Teilstring enthält
+ * @param {string[]} [opts.mailboxes] Mailboxen "<Konto>:<Mailbox>"
+ * @returns {Promise<string>} gespeicherte Pfade, einer pro Zeile
+ */
+export async function saveAttachmentsById({ messageId, destDir, nameKey = "", mailboxes = DEFAULT_MAILBOXES }) {
+  const id = normalizeMessageId(messageId);
+  if (!id) throw new Error("messageId angeben.");
+  if (!destDir) throw new Error("destDir angeben.");
+  await mkdir(destDir, { recursive: true });
+  const dir = destDir.endsWith("/") ? destDir : destDir + "/";
+  const nameCond = nameKey ? `if (name of a) contains ${asStr(nameKey)} then` : "if true then";
+  const script = `
+set theId to ${asStr(id)}
+set destDir to ${asStr(dir)}
+set wanted to ${asList(mailboxes)}
+
+tell application "Mail"
+  set savedLines to {}
+  repeat with acc in accounts
+    repeat with mb in (every mailbox of acc)
+      if wanted contains ((name of acc) & ":" & (name of mb)) then
+        set hits to {}
+        try
+          set hits to (messages of mb whose message id is theId)
+        end try
+        repeat with m in hits
+          repeat with a in (every mail attachment of m)
+            ${nameCond}
+              set p to destDir & (name of a)
+              try
+                save a in (POSIX file p)
+                set end of savedLines to p
+              on error errMsg
+                set end of savedLines to "FEHLER bei " & (name of a) & ": " & errMsg
+              end try
+            end if
+          end repeat
+          set oldTid to AppleScript's text item delimiters
+          set AppleScript's text item delimiters to linefeed
+          set out to savedLines as string
+          set AppleScript's text item delimiters to oldTid
+          if out is "" then return "keine passenden Anhänge"
+          return out
+        end repeat
+      end if
+    end repeat
+  end repeat
+  return "not found"
+end tell`;
+  return runAppleScript(script);
+}
+
+/**
+ * Listet die gesamte Korrespondenz mit einer Adresse chronologisch (älteste
+ * zuerst), eingegangene und selbst gesendete Nachrichten gemeinsam:
+ * "YYYY-MM-DD HH:MM | ← bzw. → | Betreff | message:%3Cid%3E".
+ *
+ * Die Richtung ergibt sich daraus, ob der Absender eine der eigenen
+ * Konto-Adressen ist. Damit sieht man vor einer Support-Antwort den ganzen
+ * Verlauf, ohne Posteingang und Gesendet einzeln abzufragen.
+ *
+ * @param {object} opts
+ * @param {string} opts.addressKey Adresse oder Teilstring, z. B. "jokaste@t-online.de"
+ * @param {number} [opts.days=365] wie weit zurück gesucht wird
+ * @param {string[]} [opts.mailboxes] Mailboxen "<Konto>:<Mailbox>" — hier
+ *   sinnvollerweise INBOX, Archiv UND die Gesendet-Ordner
+ * @returns {Promise<string>}
+ */
+export async function listCorrespondence({ addressKey, days = 365, mailboxes = DEFAULT_MAILBOXES }) {
+  if (!addressKey) throw new Error("addressKey angeben.");
+  const script = `
+set d1 to (current date) - (${Number(days)} * days)
+set theKey to ${asStr(addressKey)}
+set wanted to ${asList(mailboxes)}
+
+tell application "Mail"
+  set seen to {}
+  set outLines to {}
+  repeat with acc in accounts
+    set myAddrs to {}
+    try
+      set myAddrs to (email addresses of acc)
+    end try
+    repeat with mb in (every mailbox of acc)
+      if wanted contains ((name of acc) & ":" & (name of mb)) then
+        -- Eingang: Absender passt. Ausgang: irgendein Empfaenger passt.
+        set hits to {}
+        try
+          set hits to (messages of mb whose (date received ≥ d1) and (sender contains theKey))
+        end try
+        set hits2 to {}
+        try
+          set hits2 to (messages of mb whose (date received ≥ d1) and (address of to recipients contains theKey))
+        end try
+        repeat with lst in {hits, hits2}
+          repeat with m in lst
+            set mid to (message id of m)
+            if seen does not contain mid then
+              set end of seen to mid
+              set dr to (date received of m)
+              set dateStr to ((year of dr) as string) & "-" ¬
+                & (text -2 thru -1 of ("0" & ((month of dr) as integer))) & "-" ¬
+                & (text -2 thru -1 of ("0" & (day of dr))) & " " ¬
+                & (text -2 thru -1 of ("0" & (hours of dr))) & ":" ¬
+                & (text -2 thru -1 of ("0" & (minutes of dr)))
+              set dirStr to "←"
+              set snd to (sender of m)
+              repeat with a in myAddrs
+                if snd contains (a as string) then set dirStr to "→"
+              end repeat
+              set end of outLines to (dateStr & " | " & dirStr & " | " ¬
+                & (subject of m) & " | message:%3C" & mid & "%3E")
+            end if
+          end repeat
+        end repeat
+      end if
+    end repeat
+  end repeat
+  set oldTid to AppleScript's text item delimiters
+  set AppleScript's text item delimiters to linefeed
+  set out to outLines as string
+  set AppleScript's text item delimiters to oldTid
+  return out
+end tell`;
+  const raw = await runAppleScript(script);
+  const lines = raw.split("\n").filter((l) => l.trim() !== "");
+  lines.sort(); // chronologisch: die Zeilen beginnen mit YYYY-MM-DD HH:MM
+  return lines.join("\n");
+}
+
+/**
+ * Verschiebt eine über die message id bestimmte Nachricht in eine andere
+ * Mailbox, z. B. eine erledigte Support-Anfrage nach "Erledigt". Fehlt der
+ * Zielordner, wird er im selben Konto angelegt (abschaltbar über
+ * `createIfMissing`).
+ *
+ * `targetMailbox` ist entweder ein blosser Name ("Erledigt", dann im Konto der
+ * Nachricht) oder vollqualifiziert "<Konto>:<Mailbox>". Verschieben über
+ * Kontogrenzen hinweg macht Mail selbst, kann bei IMAP aber dauern.
+ *
+ * @param {object} opts
+ * @param {string} opts.messageId message id (rohe id, "<id>" oder message:-URL)
+ * @param {string} opts.targetMailbox Zielmailbox, "Erledigt" oder "<Konto>:<Mailbox>"
+ * @param {boolean} [opts.createIfMissing=true] Zielmailbox anlegen, wenn sie fehlt
+ * @param {string[]} [opts.mailboxes] zu durchsuchende Mailboxen "<Konto>:<Mailbox>"
+ * @returns {Promise<string>} "moved: <Betreff> -> <Konto>:<Mailbox>" oder "not found"
+ */
+export function moveMessage({ messageId, targetMailbox, createIfMissing = true, mailboxes = DEFAULT_MAILBOXES }) {
+  const id = normalizeMessageId(messageId);
+  if (!id) throw new Error("messageId angeben.");
+  if (!targetMailbox) throw new Error("targetMailbox angeben.");
+  const idx = targetMailbox.indexOf(":");
+  const targetAccount = idx > 0 ? targetMailbox.slice(0, idx) : "";
+  const targetName = idx > 0 ? targetMailbox.slice(idx + 1) : targetMailbox;
+  const script = `
+set theId to ${asStr(id)}
+set targetAcc to ${asStr(targetAccount)}
+set targetName to ${asStr(targetName)}
+set wanted to ${asList(mailboxes)}
+
+tell application "Mail"
+  repeat with acc in accounts
+    repeat with mb in (every mailbox of acc)
+      if wanted contains ((name of acc) & ":" & (name of mb)) then
+        set hits to {}
+        try
+          set hits to (messages of mb whose message id is theId)
+        end try
+        repeat with m in hits
+          set subj to (subject of m)
+          -- Zielkonto bestimmen: explizit angegeben oder das der Nachricht
+          set destAcc to acc
+          if targetAcc is not "" then
+            set destAcc to (first account whose name is targetAcc)
+          end if
+          set destMb to missing value
+          repeat with cand in (every mailbox of destAcc)
+            if (name of cand) is targetName then set destMb to cand
+          end repeat
+          if destMb is missing value then
+            ${createIfMissing
+              ? `set destMb to (make new mailbox at end of mailboxes of destAcc with properties {name:targetName})`
+              : `return ("Zielmailbox " & targetName & " existiert nicht in " & (name of destAcc))`}
+          end if
+          set mailbox of m to destMb
+          return ("moved: " & subj & " -> " & (name of destAcc) & ":" & targetName)
+        end repeat
+      end if
+    end repeat
+  end repeat
+  return "not found"
 end tell`;
   return runAppleScript(script);
 }
