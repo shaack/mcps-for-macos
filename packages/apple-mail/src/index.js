@@ -138,7 +138,7 @@ server.registerTool(
     title: "Mailtext lesen",
     description:
       "Liefert den Klartext-Inhalt der ersten passenden Nachricht samt Kopf (From, " +
-      "Subject, Date). Für Inhalte, die im Mailtext selbst stehen und nicht als Anhang. " +
+      "To, Cc, Subject, Date). Für Inhalte, die im Mailtext selbst stehen und nicht als Anhang. " +
       "Mindestens subjKey oder senderKey angeben; über die message id geht get_message_by_id.",
     inputSchema: {
       subjKey: z.string().optional().describe("Teilstring, der im Betreff vorkommen muss"),
@@ -265,8 +265,8 @@ server.registerTool(
   {
     title: "Nachricht per message id lesen",
     description:
-      "Liefert Kopf, Fundort (Konto:Mailbox) und Klartext-Inhalt der Nachricht mit " +
-      "genau dieser message id. Akzeptiert die rohe id, \"<id>\" und die klickbare " +
+      "Liefert Kopf (From, To, Cc, Subject, Date), Fundort (Konto:Mailbox) und " +
+      "Klartext-Inhalt der Nachricht mit genau dieser message id. Akzeptiert die rohe id, \"<id>\" und die klickbare " +
       "\"message:%3Cid%3E\"-URL aus list_messages bzw. macOS Mail.",
     inputSchema: {
       messageId: z.string().describe('message id, z. B. "message:%3Cabc@mail.example%3E" oder "abc@mail.example"'),

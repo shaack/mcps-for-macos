@@ -206,6 +206,29 @@ end tell`;
 }
 
 /**
+ * AppleScript-Zeilen, die aus der Nachricht `m` die Kopfzeilen "To:" und
+ * (falls belegt) "Cc:" aufbauen. Ergebnis liegt in `toLine` und `ccLine`.
+ * In try-Bloecken, weil einzelne Mailboxen den Zugriff verweigern koennen.
+ */
+const RECIPIENT_LINES = `          set toStr to ""
+          try
+            repeat with rcp in (to recipients of m)
+              if toStr is not "" then set toStr to toStr & ", "
+              set toStr to toStr & (address of rcp)
+            end repeat
+          end try
+          set ccStr to ""
+          try
+            repeat with rcp in (cc recipients of m)
+              if ccStr is not "" then set ccStr to ccStr & ", "
+              set ccStr to ccStr & (address of rcp)
+            end repeat
+          end try
+          set toLine to "To: " & toStr & linefeed
+          set ccLine to ""
+          if ccStr is not "" then set ccLine to "Cc: " & ccStr & linefeed`;
+
+/**
  * Listet Nachrichten eines Zeitfensters, eine Zeile pro Nachricht:
  * "YYYY-MM-DD HH:MM | Status | Absender | Betreff | message:%3Cid%3E".
  * Status ist "•" für ungelesen und "⚑ farbe" für geflaggt (beides kombinierbar).
@@ -548,7 +571,7 @@ end tell`;
 }
 
 /**
- * Liefert Kopf, Fundort und Klartext-Inhalt der Nachricht mit genau dieser
+ * Liefert Kopf (inkl. Empfänger), Fundort und Klartext-Inhalt der Nachricht mit genau dieser
  * message id. Akzeptiert die rohe id, "<id>" und die klickbare
  * "message:%3Cid%3E"-URL aus list_messages/macOS Mail.
  *
@@ -575,7 +598,9 @@ tell application "Mail"
         end try
         repeat with m in hits
           set dr to (date received of m)
+${RECIPIENT_LINES}
           return "From: " & (sender of m) & linefeed ¬
+            & toLine & ccLine ¬
             & "Subject: " & (subject of m) & linefeed ¬
             & "Date: " & (dr as string) & linefeed ¬
             & "Mailbox: " & (name of acc) & ":" & (name of mb) & linefeed ¬
@@ -632,7 +657,7 @@ function subjectSenderCond(subjKey, senderKey, messageId = "") {
 
 /**
  * Liefert den Klartext-Inhalt der ersten passenden Nachricht samt Kopf (From,
- * Subject, Date). Für Inhalte, die im Mailtext selbst stehen und nicht als
+ * To, Cc, Subject, Date). Für Inhalte, die im Mailtext selbst stehen und nicht als
  * Anhang.
  *
  * @param {object} opts
@@ -657,7 +682,9 @@ tell application "Mail"
         end try
         repeat with m in hits
           set dr to (date received of m)
+${RECIPIENT_LINES}
           return "From: " & (sender of m) & linefeed ¬
+            & toLine & ccLine ¬
             & "Subject: " & (subject of m) & linefeed ¬
             & "Date: " & (dr as string) & linefeed & linefeed ¬
             & (content of m as text)

@@ -19,8 +19,8 @@ Installation und Registrierung: siehe [Wurzel-README](../../README.md).
 | `list_messages` | Zeitfenster auflisten, neueste zuerst, mit Status (`•` ungelesen, `⚑` geflaggt) und `message:`-URL je Zeile; `unreadOnly` schränkt auf Ungelesenes ein |
 | `search_messages` | Im Zeitfenster nach Absender-Stichworten (`senderKeys`), nur geflaggten Nachrichten oder einer Fahnenfarbe (`flagColor`) suchen, mit Anhangnamen und Flaggen-Markierung (⚑) |
 | `list_correspondence` | Gesamten Schriftwechsel mit einer Adresse chronologisch zeigen, eingegangen und gesendet gemeinsam (`←` / `→`). Braucht die Gesendet-Ordner in `mailboxes`, sonst fehlt die eigene Hälfte |
-| `get_message_by_id` | Eine Nachricht über ihre message id lesen, samt Fundort `Konto:Mailbox` |
-| `get_message_body` | Klartext-Inhalt der ersten passenden Nachricht lesen, gefunden über Betreff oder Absender |
+| `get_message_by_id` | Eine Nachricht über ihre message id lesen: Kopf mit Empfängern (`To`, `Cc`), Fundort `Konto:Mailbox` und Text |
+| `get_message_body` | Klartext-Inhalt der ersten passenden Nachricht lesen, gefunden über Betreff oder Absender; Kopf mit Empfängern |
 | `save_attachment` | Ersten passenden Anhang unter festem Zielpfad speichern; Endungsfilter `endsWith` (Vorgabe `.pdf`) |
 | `save_attachments_by_id` | Alle Anhänge einer per message id bestimmten Nachricht speichern, beliebige Dateitypen |
 | `create_draft` | E-Mail-Entwurf anlegen, per Vorgabe still im Entwurfsordner (`visible: true` öffnet ein Fenster) |
