@@ -13,8 +13,8 @@ Installation und Registrierung: siehe [Wurzel-README](../../README.md).
 |------|-------|
 | `list_mailboxes` | Alle Konten und Mailboxen als `<Konto>:<Mailbox>` auflisten |
 | `list_messages` | Zeitfenster auflisten, neueste zuerst, mit Status (`•` ungelesen, `⚑` geflaggt) und `message:`-URL je Zeile. Mit `unreadOnly` die Liste der offenen Vorgänge |
-| `search_messages` | Nach Absender-Stichworten und/oder nur geflaggten Nachrichten im Zeitfenster suchen, mit Anhangnamen und Flaggen-Markierung (⚑) |
-| `list_correspondence` | Gesamten Schriftwechsel mit einer Adresse chronologisch zeigen, eingegangen und gesendet gemeinsam (`←` / `→`) |
+| `search_messages` | Im Zeitfenster nach Absender-Stichworten, nur geflaggten Nachrichten oder einer bestimmten Fahnenfarbe (`flagColor`) suchen, mit Anhangnamen und Flaggen-Markierung (⚑) |
+| `list_correspondence` | Gesamten Schriftwechsel mit einer Adresse chronologisch zeigen, eingegangen und gesendet gemeinsam (`←` / `→`). Braucht die Gesendet-Ordner in `mailboxes`, sonst fehlt die eigene Hälfte |
 | `get_message_by_id` | Eine Nachricht über ihre message id lesen, samt Fundort `Konto:Mailbox` |
 | `get_message_body` | Klartext-Inhalt der ersten passenden Nachricht lesen (für Belege ohne PDF) |
 | `save_attachment` | Ersten passenden PDF-Anhang (Name enthält Schlüssel, endet auf .pdf) speichern |
@@ -50,6 +50,16 @@ cp config.example.json config.json
 Format je Eintrag `<Konto>:<Mailbox>`; die exakten Namen liefert `list_mailboxes`.
 Fehlt die Datei, greifen generische Platzhalter. Alternativ übergibt der Aufrufer
 die Mailboxen je Tool direkt im `mailboxes`-Parameter.
+
+Zwei Fallstricke bei den Vorgaben:
+
+- **Gesendet-Ordner fehlen** in der Regel, weil sie für die Rechnungssuche nur
+  stören. `list_correspondence` braucht sie aber, sonst zeigt es nur die
+  eingegangene Hälfte. Dort also `mailboxes` explizit mit Gesendet übergeben.
+- **Support-Postfächer** stehen nicht zwingend in der Vorgabe. Für Support-Läufe
+  die passenden Postfächer je Aufruf mitgeben oder eine eigene `config.json`
+  pflegen. Je mehr Mailboxen in der Vorgabe stehen, desto langsamer wird jede
+  Suche.
 
 ## Beispielablauf Rechnungen
 

@@ -1,13 +1,13 @@
 # mcps-for-macos
 
-Eine Sammlung kleiner MCP-Server (Model Context Protocol) für die
+Eine Sammlung MCP-Server (Model Context Protocol) für die
 macOS-Automatisierung. Jeder Server kapselt eine App bzw. Systemfunktion per
 AppleScript oder Kommandozeile und stellt sie als Tools bereit, die eine
 KI-Anwendung (Claude Desktop, Claude Code) aufrufen kann.
 
 | Server | Paket | Zweck |
 |--------|-------|-------|
-| Apple Mail | [`packages/apple-mail`](packages/apple-mail) | Mail suchen, Anhänge speichern, Text lesen, flaggen |
+| Apple Mail | [`packages/apple-mail`](packages/apple-mail) | Mail suchen und lesen, Anhänge speichern, flaggen, verschieben, Antwort-Entwürfe schreiben |
 | MoneyMoney | [`packages/money-money`](packages/money-money) | Konten und Umsätze exportieren |
 | Spotlight | [`packages/spotlight`](packages/spotlight) | Systemweite Dateisuche (mdfind/mdls) |
 
