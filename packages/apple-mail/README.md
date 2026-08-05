@@ -23,22 +23,22 @@ Installation und Registrierung: siehe [Wurzel-README](../../README.md).
 | `get_message_body` | Klartext-Inhalt der ersten passenden Nachricht lesen, gefunden über Betreff oder Absender |
 | `save_attachment` | Ersten passenden Anhang unter festem Zielpfad speichern; Endungsfilter `endsWith` (Vorgabe `.pdf`) |
 | `save_attachments_by_id` | Alle Anhänge einer per message id bestimmten Nachricht speichern, beliebige Dateitypen |
-| `reply_draft` | Antwort-Entwurf auf eine Nachricht anlegen, mit nativem Reply (Empfänger, `Re:`, Threading) und dem Original als `>`-Zitat |
-| `create_draft` | Neuen E-Mail-Entwurf anlegen und sichtbar in Mail öffnen |
+| `create_draft` | E-Mail-Entwurf anlegen, per Vorgabe still im Entwurfsordner (`visible: true` öffnet ein Fenster) |
 | `flag_message` | Fahne an genau einer Nachricht setzen/entfernen, optional mit Farbe; bei mehrdeutigem Schlüssel passiert nichts |
 | `mark_read` | Nachrichten auf gelesen/ungelesen setzen, einzeln oder für ein ganzes Zeitfenster |
 | `move_message` | Nachricht in eine andere Mailbox verschieben, etwa in eine Ablage; fehlende Zielordner werden angelegt |
 
 Kein Tool sendet eine Mail. Antworten entstehen immer als Entwurf, das
-Abschicken machst du selbst im Mail-Fenster.
+Abschicken machst du selbst in Mail. Entwürfe landen per Vorgabe still im
+Entwurfsordner; `visible: true` öffnet sie stattdessen in einem Fenster.
 
 ### Nachrichten referenzieren
 
 Nachrichten werden am besten über ihre **message id** adressiert, nicht über
 Betreffs. `list_messages`, `list_correspondence` und `get_message_by_id` geben
 sie als klickbare `message:%3Cid%3E`-URL aus. Diese URL nehmen
-`get_message_by_id`, `reply_draft`, `flag_message`, `mark_read`,
-`save_attachments_by_id` und `move_message` entgegen, ebenso die rohe id und die
+`get_message_by_id`, `flag_message`, `mark_read`, `save_attachments_by_id` und
+`move_message` entgegen, ebenso die rohe id und die
 Form `<id>`. Wo `messageId` gesetzt ist, hat sie Vorrang vor `subjKey` und
 `senderKey`.
 
@@ -84,8 +84,9 @@ eingebauten Abläufe; Fahnenfarben und Ordnernamen legt der Aufrufer fest.
 2. Pro Nachricht `get_message_by_id`; hängen Bilder dran,
    `save_attachments_by_id` in einen Arbeitsordner und ansehen.
 3. Bei bekannten Gegenübern `list_correspondence` für den bisherigen Verlauf.
-4. `reply_draft` mit der message id schreibt die Antwort samt Zitat als Entwurf.
-   Eine Signatur gehört mit in `body`, weil Mail beim Ersetzen des Inhalts keine
-   Konto-Signatur anfügt.
+4. `create_draft` schreibt die Antwort als Entwurf. Betreff (`Re: …`), Empfänger
+   und, falls gewünscht, das Zitat des Originals baut der Aufrufer selbst in
+   `subject` und `body`. Eine Signatur gehört ebenfalls in `body`, Mail fügt bei
+   per AppleScript gesetztem Inhalt keine Konto-Signatur an.
 5. Nach dem Absenden `flag_message` und `move_message` in eine Ablage, damit der
    Posteingang nur Unerledigtes enthält.

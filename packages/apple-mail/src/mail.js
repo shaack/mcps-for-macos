@@ -210,7 +210,7 @@ end tell`;
  * "YYYY-MM-DD HH:MM | Status | Absender | Betreff | message:%3Cid%3E".
  * Status ist "•" für ungelesen und "⚑ farbe" für geflaggt (beides kombinierbar).
  * Die message:-URL ist in macOS klickbar und die eindeutige Referenz für
- * get_message_by_id, reply_draft, flag_message, mark_read und move_message.
+ * get_message_by_id, flag_message, mark_read und move_message.
  *
  * Bewusst ohne Pflichtfilter, gedacht für kleine Postfächer oder kurze
  * Zeiträume; dedupliziert über die message id, neueste zuerst. `unreadOnly`
@@ -734,98 +734,13 @@ end tell`;
 }
 
 /**
- * Legt einen **Antwort-Entwurf** auf genau eine Nachricht an und öffnet ihn
- * sichtbar in Mail. Nutzt Mails natives reply (Empfänger, "Re:"-Betreff,
- * Threading-Header), ersetzt aber den Inhalt durch `body` plus den
- * Original-Text als klassisches ">"-Zitat mit Attributionszeile. Sendet
- * bewusst NICHT, das Abschicken machst du selbst im Mail-Fenster.
+ * Legt einen **Entwurf** an. Sendet bewusst NICHT: Empfänger, Betreff und Text
+ * sind ausgefüllt, das Abschicken machst du selbst in Mail. So kann keine Mail
+ * versehentlich rausgehen.
  *
- * Passt der Schlüssel auf mehrere (per message id deduplizierte) Nachrichten,
- * wird ohne `pickLatest` nichts angelegt, sondern die Mehrdeutigkeit gemeldet.
- *
- * Hinweis: Da der Inhalt ersetzt wird, fügt Mail KEINE Konto-Signatur an;
- * eine gewünschte Signatur gehört mit in `body`.
- *
- * @param {object} opts
- * @param {string} [opts.subjKey] Teilstring im Betreff der Original-Mail
- * @param {string} [opts.senderKey] Teilstring im Absender der Original-Mail
- * @param {string} [opts.body] Antworttext (Klartext, inkl. Grußformel/Signatur)
- * @param {boolean} [opts.replyAll=false] Allen antworten statt nur dem Absender
- * @param {boolean} [opts.pickLatest=false] bei mehreren Treffern die neueste nehmen
- * @param {string} [opts.from] Absender erzwingen, z. B. "Name <a@b.de>" (sonst wählt Mail das Empfängerkonto)
- * @param {string[]} [opts.mailboxes] Mailboxen "<Konto>:<Mailbox>"
- * @returns {Promise<string>} "reply draft created: <Betreff>", "not found" oder "ambiguous: ..."
- */
-export function replyDraft({ messageId = "", subjKey = "", senderKey = "", body = "", replyAll = false, pickLatest = false, from = "", mailboxes = DEFAULT_MAILBOXES }) {
-  const cond = subjectSenderCond(subjKey, senderKey, messageId);
-  const script = `
-set bod to ${asStr(body)}
-set wanted to ${asList(mailboxes)}
-
-tell application "Mail"
-  set foundIds to {}
-  set foundSubjects to {}
-  set theMsg to missing value
-  set latestDate to missing value
-  repeat with acc in accounts
-    repeat with mb in (every mailbox of acc)
-      if wanted contains ((name of acc) & ":" & (name of mb)) then
-        set hits to {}
-        try
-          set hits to (messages of mb whose ${cond})
-        end try
-        repeat with m in hits
-          set mid to (message id of m)
-          if foundIds does not contain mid then
-            set end of foundIds to mid
-            set end of foundSubjects to (subject of m)
-            set dr to (date received of m)
-            if (theMsg is missing value) or (${pickLatest ? "dr > latestDate" : "false"}) then
-              set theMsg to m
-              set latestDate to dr
-            end if
-          end if
-        end repeat
-      end if
-    end repeat
-  end repeat
-  set c to (count of foundIds)
-  if c is 0 then return "not found"
-  if c > 1 and ${pickLatest ? "false" : "true"} then ¬
-    return ("ambiguous: " & c & " messages match, refusing to reply. Subjects: " & (foundSubjects as string) & " — pickLatest nutzen oder Schlüssel verengen")
-
-  -- Zitat aus dem Original bauen: Attributionszeile plus "> " vor jeder Zeile.
-  -- Datum numerisch (TT.MM.JJJJ um HH:MM), damit keine Systemsprache reinmischt.
-  set origText to (content of theMsg as text)
-  set dr to (date received of theMsg)
-  set dd to text -2 thru -1 of ("0" & (day of dr))
-  set mm to text -2 thru -1 of ("0" & ((month of dr) as integer))
-  set hh to text -2 thru -1 of ("0" & (hours of dr))
-  set mi to text -2 thru -1 of ("0" & (minutes of dr))
-  set attribution to "Am " & dd & "." & mm & "." & ((year of dr) as string) ¬
-    & " um " & hh & ":" & mi & " schrieb " & (sender of theMsg) & ":"
-  set oldTid to AppleScript's text item delimiters
-  set AppleScript's text item delimiters to linefeed
-  set origLines to text items of origText
-  set AppleScript's text item delimiters to oldTid
-  set quoted to ""
-  repeat with l in origLines
-    set quoted to quoted & "> " & (l as string) & linefeed
-  end repeat
-
-  set theReply to reply theMsg with opening window${replyAll ? " and reply to all" : ""}
-  delay 0.3
-  set content of theReply to bod & linefeed & linefeed & attribution & linefeed & quoted
-${from ? `  set sender of theReply to ${asStr(from)}\n` : ""}  activate
-  return ("reply draft created: " & (subject of theReply))
-end tell`;
-  return runAppleScript(script);
-}
-
-/**
- * Legt einen **Entwurf** an und öffnet ihn sichtbar in Mail. Sendet bewusst
- * NICHT: Empfänger, Betreff und Text sind ausgefüllt, das Abschicken machst du
- * selbst im Mail-Fenster. So kann keine Mail versehentlich rausgehen.
+ * Vorgabe ist ein stiller Entwurf im Entwurfsordner, ohne Fenster. Das ist bei
+ * mehreren Entwürfen am Stück angenehmer und vermeidet Dubletten aus
+ * Fenster-Autosicherungen. `visible: true` öffnet ihn stattdessen sichtbar.
  *
  * @param {object} opts
  * @param {string[]} opts.to Empfängeradressen (mindestens eine)
@@ -833,10 +748,11 @@ end tell`;
  * @param {string[]} [opts.bcc] BCC-Adressen
  * @param {string} [opts.subject] Betreff
  * @param {string} [opts.body] Nachrichtentext (Klartext)
+ * @param {boolean} [opts.visible=false] Entwurf sichtbar in einem Fenster öffnen statt still ablegen
  * @param {string} [opts.from] Absender, z. B. "Name <a@b.de>" (sonst Standardkonto)
  * @returns {Promise<string>} "draft created: <Betreff>"
  */
-export function createDraft({ to = [], cc = [], bcc = [], subject = "", body = "", from = "" }) {
+export function createDraft({ to = [], cc = [], bcc = [], subject = "", body = "", visible = false, from = "" }) {
   if (!Array.isArray(to) || to.length === 0) {
     throw new Error("Mindestens eine to-Adresse angeben.");
   }
@@ -855,11 +771,11 @@ set subj to ${asStr(subject)}
 set bod to ${asStr(body)}
 
 tell application "Mail"
-  set m to make new outgoing message with properties {subject:subj, content:bod, visible:true}
+  set m to make new outgoing message with properties {subject:subj, content:bod, visible:${visible}}
   tell m
 ${recipLines}
   end tell
-${senderLine}  activate
+${senderLine}${visible ? "  activate" : "  save m"}
   return ("draft created: " & subj)
 end tell`;
   return runAppleScript(script);

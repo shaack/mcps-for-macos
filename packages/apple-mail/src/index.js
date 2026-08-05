@@ -9,7 +9,6 @@ import {
   getMessageBody,
   flagMessage,
   createDraft,
-  replyDraft,
   listMessages,
   getMessageById,
   markRead,
@@ -202,15 +201,20 @@ server.registerTool(
   {
     title: "Entwurf anlegen",
     description:
-      "Legt einen E-Mail-ENTWURF an und öffnet ihn sichtbar in Mail. Sendet bewusst " +
-      "NICHT: Empfänger, Betreff und Text sind ausgefüllt, das Abschicken macht der " +
-      "Nutzer selbst im Mail-Fenster. Mindestens eine to-Adresse angeben.",
+      "Legt einen E-Mail-ENTWURF an, per Vorgabe still im Entwurfsordner ohne " +
+      "Fenster (visible: true öffnet ihn sichtbar). Sendet bewusst NICHT: Empfänger, " +
+      "Betreff und Text sind ausgefüllt, das Abschicken macht der Nutzer selbst in " +
+      "Mail. Mindestens eine to-Adresse angeben.",
     inputSchema: {
       to: z.array(z.string()).min(1).describe("Empfängeradressen (mindestens eine)"),
       cc: z.array(z.string()).optional().describe("CC-Adressen"),
       bcc: z.array(z.string()).optional().describe("BCC-Adressen"),
       subject: z.string().optional().describe("Betreff"),
       body: z.string().optional().describe("Nachrichtentext (Klartext)"),
+      visible: z
+        .boolean()
+        .optional()
+        .describe("Entwurf sichtbar in einem Fenster öffnen statt still im Entwurfsordner ablegen (Vorgabe false)"),
       from: z
         .string()
         .optional()
@@ -221,47 +225,6 @@ server.registerTool(
 );
 
 server.registerTool(
-  "reply_draft",
-  {
-    title: "Antwort-Entwurf anlegen",
-    description:
-      "Legt einen ANTWORT-Entwurf auf genau eine per subjKey/senderKey gefundene " +
-      "Nachricht an und öffnet ihn sichtbar in Mail. Nutzt Mails natives Reply " +
-      "(Empfänger, \"Re:\"-Betreff, Threading), der Inhalt wird durch body plus das " +
-      "Original als \">\"-Zitat mit Attributionszeile ersetzt. Mail fügt dabei KEINE " +
-      "Konto-Signatur an, die Signatur gehört mit in body. Sendet bewusst NICHT. " +
-      "Bei mehreren Treffern wird ohne pickLatest abgelehnt. " +
-      "Mindestens messageId, subjKey oder senderKey angeben; messageId hat Vorrang.",
-    inputSchema: {
-      messageId: z
-        .string()
-        .optional()
-        .describe('message id der Original-Mail (rohe id, "<id>" oder "message:%3Cid%3E"-URL); eindeutigste Referenz'),
-      subjKey: z.string().optional().describe("Teilstring im Betreff der Original-Mail"),
-      senderKey: z.string().optional().describe("Teilstring im Absender der Original-Mail"),
-      body: z
-        .string()
-        .optional()
-        .describe("Antworttext (Klartext, inkl. Grußformel und Signatur)"),
-      replyAll: z.boolean().optional().describe("Allen antworten statt nur dem Absender"),
-      pickLatest: z
-        .boolean()
-        .optional()
-        .describe("Bei mehreren Treffern die neueste Nachricht nehmen statt abzulehnen"),
-      from: z
-        .string()
-        .optional()
-        .describe('Absender erzwingen, z. B. "Name <a@b.de>" (sonst wählt Mail das Empfängerkonto)'),
-      mailboxes: z
-        .array(z.string())
-        .optional()
-        .describe("Zu durchsuchende Mailboxen. Vorgabe wie bei search_messages."),
-    },
-  },
-  (args) => run(() => replyDraft(args))
-);
-
-server.registerTool(
   "list_messages",
   {
     title: "Nachrichten auflisten",
@@ -269,7 +232,7 @@ server.registerTool(
       "Listet Nachrichten eines Zeitfensters, neueste zuerst, eine Zeile pro Nachricht: " +
       "\"YYYY-MM-DD HH:MM | Status | Absender | Betreff | message:%3Cid%3E\". Status ist " +
       "\"•\" für ungelesen und \"⚑ farbe\" für geflaggt. Die message:-URL ist die eindeutige " +
-      "Referenz für get_message_by_id, reply_draft, flag_message, mark_read und move_message. " +
+      "Referenz für get_message_by_id, flag_message, mark_read und move_message. " +
       "Bewusst ohne Pflichtfilter — für kleine Postfächer oder kurze Zeiträume " +
       "(für breite Suchen search_messages nehmen). unreadOnly schränkt auf Ungelesenes ein.",
     inputSchema: {
