@@ -195,6 +195,120 @@ end tell`;
 }
 
 /**
+ * Listet alle Nachrichten eines Zeitfensters, eine Zeile pro Nachricht:
+ * "YYYY-MM-DD HH:MM | Absender | Betreff | message:%3Cid%3E". Die message:-URL
+ * ist in macOS klickbar und dient als eindeutige Referenz für
+ * get_message_by_id. Bewusst ohne Pflichtfilter, gedacht für kleine Postfächer
+ * oder kurze Zeiträume; dedupliziert über die message id.
+ *
+ * @param {object} opts
+ * @param {string} [opts.fromDate] Startdatum YYYY-MM-DD (inklusive); ohne
+ *   Angabe zählt das Fenster von heute um `days` zurück
+ * @param {number} [opts.days=7] Länge des Zeitfensters in Tagen
+ * @param {string[]} [opts.mailboxes] Mailboxen "<Konto>:<Mailbox>"
+ * @returns {Promise<string>}
+ */
+export function listMessages({ fromDate = "", days = 7, mailboxes = DEFAULT_MAILBOXES }) {
+  const window = fromDate
+    ? `${dateSetter("d1", fromDate)}
+set d2 to d1 + (${Number(days)} * days)`
+    : `set d2 to (current date) + (1 * days)
+set d1 to (current date) - (${Number(days)} * days)`;
+  const script = `
+${window}
+set wanted to ${asList(mailboxes)}
+
+tell application "Mail"
+  set seen to {}
+  set outLines to {}
+  repeat with acc in accounts
+    repeat with mb in (every mailbox of acc)
+      if wanted contains ((name of acc) & ":" & (name of mb)) then
+        set hits to {}
+        try
+          set hits to (messages of mb whose (date received ≥ d1) and (date received < d2))
+        end try
+        repeat with m in hits
+          set mid to (message id of m)
+          if seen does not contain mid then
+            set end of seen to mid
+            set dr to (date received of m)
+            set dateStr to ((year of dr) as string) & "-" ¬
+              & (text -2 thru -1 of ("0" & ((month of dr) as integer))) & "-" ¬
+              & (text -2 thru -1 of ("0" & (day of dr))) & " " ¬
+              & (text -2 thru -1 of ("0" & (hours of dr))) & ":" ¬
+              & (text -2 thru -1 of ("0" & (minutes of dr)))
+            set end of outLines to (dateStr & " | " & (sender of m) & " | " ¬
+              & (subject of m) & " | message:%3C" & mid & "%3E")
+          end if
+        end repeat
+      end if
+    end repeat
+  end repeat
+  set oldTid to AppleScript's text item delimiters
+  set AppleScript's text item delimiters to linefeed
+  set out to outLines as string
+  set AppleScript's text item delimiters to oldTid
+  return out
+end tell`;
+  return runAppleScript(script);
+}
+
+/**
+ * Liefert Kopf, Fundort und Klartext-Inhalt der Nachricht mit genau dieser
+ * message id. Akzeptiert die rohe id, "<id>" und die klickbare
+ * "message:%3Cid%3E"-URL aus list_messages/macOS Mail.
+ *
+ * @param {object} opts
+ * @param {string} opts.messageId message id in beliebiger der drei Formen
+ * @param {string[]} [opts.mailboxes] Mailboxen "<Konto>:<Mailbox>"
+ * @param {number} [opts.maxChars=20000] Ausgabe auf so viele Zeichen kürzen
+ * @returns {Promise<string>}
+ */
+export async function getMessageById({ messageId, mailboxes = DEFAULT_MAILBOXES, maxChars = 20000 }) {
+  let id = String(messageId ?? "").trim();
+  id = id.replace(/^message:(\/\/)?/i, "");
+  try {
+    id = decodeURIComponent(id);
+  } catch {
+    // schon dekodiert (z. B. nacktes "<id>" mit %-fremden Zeichen) — so lassen
+  }
+  id = id.replace(/^</, "").replace(/>$/, "");
+  if (!id) throw new Error("messageId angeben.");
+  const script = `
+set theId to ${asStr(id)}
+set wanted to ${asList(mailboxes)}
+
+tell application "Mail"
+  repeat with acc in accounts
+    repeat with mb in (every mailbox of acc)
+      if wanted contains ((name of acc) & ":" & (name of mb)) then
+        set hits to {}
+        try
+          set hits to (messages of mb whose message id is theId)
+        end try
+        repeat with m in hits
+          set dr to (date received of m)
+          return "From: " & (sender of m) & linefeed ¬
+            & "Subject: " & (subject of m) & linefeed ¬
+            & "Date: " & (dr as string) & linefeed ¬
+            & "Mailbox: " & (name of acc) & ":" & (name of mb) & linefeed ¬
+            & "Message-Id: message:%3C" & theId & "%3E" & linefeed & linefeed ¬
+            & (content of m as text)
+        end repeat
+      end if
+    end repeat
+  end repeat
+  return "not found"
+end tell`;
+  const body = await runAppleScript(script);
+  if (body.length > maxChars) {
+    return body.slice(0, maxChars) + `\n\n… (gekürzt auf ${maxChars} Zeichen)`;
+  }
+  return body;
+}
+
+/**
  * Baut eine AppleScript-whose-Bedingung aus Betreff- und/oder Absender-Schlüssel.
  * Mindestens einer muss gesetzt sein.
  * @param {string} subjKey

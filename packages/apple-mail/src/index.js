@@ -10,6 +10,8 @@ import {
   flagMessage,
   createDraft,
   replyDraft,
+  listMessages,
+  getMessageById,
   DEFAULT_MAILBOXES,
 } from "./mail.js";
 
@@ -233,6 +235,62 @@ server.registerTool(
     },
   },
   (args) => run(() => replyDraft(args))
+);
+
+server.registerTool(
+  "list_messages",
+  {
+    title: "Nachrichten auflisten",
+    description:
+      "Listet alle Nachrichten eines Zeitfensters, eine Zeile pro Nachricht: " +
+      "\"YYYY-MM-DD HH:MM | Absender | Betreff | message:%3Cid%3E\". Die message:-URL " +
+      "ist die eindeutige Referenz für get_message_by_id und in macOS klickbar. " +
+      "Bewusst ohne Pflichtfilter — für kleine Postfächer oder kurze Zeiträume " +
+      "(für breite Suchen search_messages nehmen).",
+    inputSchema: {
+      fromDate: z
+        .string()
+        .regex(/^\d{4}-\d{2}-\d{2}$/)
+        .optional()
+        .describe("Startdatum YYYY-MM-DD (inklusive); ohne Angabe zählt das Fenster von heute zurück"),
+      days: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .describe("Länge des Zeitfensters in Tagen (Vorgabe 7)"),
+      mailboxes: z
+        .array(z.string())
+        .optional()
+        .describe("Zu durchsuchende Mailboxen. Vorgabe wie bei search_messages."),
+    },
+  },
+  (args) => run(() => listMessages(args))
+);
+
+server.registerTool(
+  "get_message_by_id",
+  {
+    title: "Nachricht per message id lesen",
+    description:
+      "Liefert Kopf, Fundort (Konto:Mailbox) und Klartext-Inhalt der Nachricht mit " +
+      "genau dieser message id. Akzeptiert die rohe id, \"<id>\" und die klickbare " +
+      "\"message:%3Cid%3E\"-URL aus list_messages bzw. macOS Mail.",
+    inputSchema: {
+      messageId: z.string().describe('message id, z. B. "message:%3Cabc@mail.example%3E" oder "abc@mail.example"'),
+      maxChars: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .describe("Ausgabe auf so viele Zeichen kürzen (Vorgabe 20000)"),
+      mailboxes: z
+        .array(z.string())
+        .optional()
+        .describe("Zu durchsuchende Mailboxen. Vorgabe wie bei search_messages."),
+    },
+  },
+  (args) => run(() => getMessageById(args))
 );
 
 const transport = new StdioServerTransport();
