@@ -75,3 +75,31 @@ export function dateSetter(varName, isoDate) {
     `set time of ${varName} to 0`,
   ].join("\n");
 }
+
+/**
+ * Wie dateSetter, akzeptiert aber zusätzlich eine Uhrzeit. Ohne Uhrzeit wird
+ * Mitternacht gesetzt.
+ * @param {string} varName Name der AppleScript-Variablen
+ * @param {string} isoDateTime "YYYY-MM-DD" oder "YYYY-MM-DD HH:MM"
+ * @returns {string}
+ */
+export function dateTimeSetter(varName, isoDateTime) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2}))?$/.exec(isoDateTime);
+  if (!m) {
+    throw new Error(`Ungültiges Datum (erwartet YYYY-MM-DD oder YYYY-MM-DD HH:MM): ${isoDateTime}`);
+  }
+  const [, year, month, day, hh, mm] = m;
+  const monthConst = MONTHS[Number(month) - 1];
+  if (!monthConst) throw new Error(`Ungültiger Monat: ${month}`);
+  if (hh !== undefined && (Number(hh) > 23 || Number(mm) > 59)) {
+    throw new Error(`Ungültige Uhrzeit: ${hh}:${mm}`);
+  }
+  const seconds = hh === undefined ? 0 : Number(hh) * 3600 + Number(mm) * 60;
+  return [
+    `set ${varName} to (current date)`,
+    `set year of ${varName} to ${Number(year)}`,
+    `set month of ${varName} to ${monthConst}`,
+    `set day of ${varName} to ${Number(day)}`,
+    `set time of ${varName} to ${seconds}`,
+  ].join("\n");
+}

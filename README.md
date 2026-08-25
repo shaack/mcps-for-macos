@@ -7,6 +7,7 @@ KI-Anwendung (Claude Desktop, Claude Code) aufrufen kann.
 
 | Server | Paket | Zweck |
 |--------|-------|-------|
+| Apple Kalender | [`packages/apple-calendar`](packages/apple-calendar) | Termine lesen und anlegen (Calendar.app) |
 | Apple Mail | [`packages/apple-mail`](packages/apple-mail) | Mail suchen und lesen, Anhänge speichern, flaggen, verschieben, Antwort-Entwürfe schreiben |
 | MoneyMoney | [`packages/money-money`](packages/money-money) | Konten und Umsätze exportieren |
 | Spotlight | [`packages/spotlight`](packages/spotlight) | Systemweite Dateisuche (mdfind/mdls) |
@@ -42,6 +43,7 @@ Pfade sind absolut anzugeben; `<REPO>` steht für den Pfad zu diesem Repo.
 
 ```bash
 # global in allen Projekten (empfohlen für Systemwerkzeuge)
+claude mcp add apple-calendar --scope user -- node <REPO>/packages/apple-calendar/src/index.js
 claude mcp add apple-mail  --scope user -- node <REPO>/packages/apple-mail/src/index.js
 claude mcp add money-money --scope user -- node <REPO>/packages/money-money/src/index.js
 claude mcp add spotlight   --scope user -- node <REPO>/packages/spotlight/src/index.js
@@ -62,6 +64,7 @@ In `~/Library/Application Support/Claude/claude_desktop_config.json`:
 ```json
 {
   "mcpServers": {
+    "apple-calendar": { "command": "node", "args": ["<REPO>/packages/apple-calendar/src/index.js"] },
     "apple-mail":  { "command": "node", "args": ["<REPO>/packages/apple-mail/src/index.js"] },
     "money-money": { "command": "node", "args": ["<REPO>/packages/money-money/src/index.js"] },
     "spotlight":   { "command": "node", "args": ["<REPO>/packages/spotlight/src/index.js"] }
@@ -72,7 +75,7 @@ In `~/Library/Application Support/Claude/claude_desktop_config.json`:
 ## macOS-Berechtigungen
 
 - **Automatisierung.** Beim ersten Zugriff fragt macOS nach Automatisierungs-Zugriff
-  auf Mail bzw. MoneyMoney. Einmal erlauben.
+  auf Mail, Kalender bzw. MoneyMoney. Einmal erlauben.
 - **Full Disk Access.** Geschützte Orte (z. B. `~/Library/Mail`) liefern nur mit
   Full Disk Access für den ausführenden Prozess Treffer
   (Systemeinstellungen → Datenschutz & Sicherheit → Festplattenvollzugriff).
