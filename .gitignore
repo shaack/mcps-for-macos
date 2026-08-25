@@ -4,4 +4,5 @@ node_modules/
 
 # Lokale, private Konfiguration (Kopie von config.example.json)
 packages/apple-mail/config.json
+packages/apple-calendar/config.json
 .env

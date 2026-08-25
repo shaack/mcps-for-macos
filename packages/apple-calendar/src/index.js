@@ -2,7 +2,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { listCalendars, listEvents, createEvent } from "./calendar.js";
+import { listCalendars, listEvents, createEvent, DEFAULT_CALENDARS } from "./calendar.js";
 
 const server = new McpServer({
   name: "apple-calendar",
@@ -60,7 +60,10 @@ server.registerTool(
       calendars: z
         .array(z.string())
         .optional()
-        .describe("Nur diese Kalender durchsuchen (exakte Namen aus list_calendars). Vorgabe: alle"),
+        .describe(
+          "Nur diese Kalender durchsuchen (exakte Namen aus list_calendars). Vorgabe: " +
+            (DEFAULT_CALENDARS.length > 0 ? DEFAULT_CALENDARS.join(", ") : "alle (langsam, besser eingrenzen)")
+        ),
       searchKey: z
         .string()
         .optional()

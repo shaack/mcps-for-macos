@@ -1,4 +1,13 @@
 import { runAppleScript, asStr, asList, dateTimeSetter } from "@mcps/common";
+import { loadConfig } from "./config.js";
+
+/**
+ * Vorgabe-Kalender für list_events, aus der lokalen, nicht eingecheckten
+ * config.json (Kopie von config.example.json). Fehlt sie, ist die Liste leer
+ * und es werden alle Kalender durchsucht; das kann bei Geburtstags- und
+ * abonnierten Kalendern spürbar langsam sein.
+ */
+export const DEFAULT_CALENDARS = loadConfig().calendars ?? [];
 
 /**
  * AppleScript-Zeilen, die eine Datumsvariable `src` als "YYYY-MM-DD HH:MM" in
@@ -89,12 +98,13 @@ end tell`;
  * @param {object} opts
  * @param {string} [opts.fromDate] Startdatum YYYY-MM-DD (inklusive), Vorgabe heute
  * @param {number} [opts.days=7] Länge des Zeitfensters in Tagen
- * @param {string[]} [opts.calendars] nur diese Kalender (exakte Namen); Vorgabe alle
+ * @param {string[]} [opts.calendars] nur diese Kalender (exakte Namen); Vorgabe
+ *   aus der config.json, ohne sie alle Kalender
  * @param {string} [opts.searchKey] nur Termine, deren Titel diesen Teilstring enthält
  * @param {boolean} [opts.includeRecurring=true] Abschnitt mit älteren Serien anhängen
  * @returns {Promise<string>}
  */
-export async function listEvents({ fromDate = "", days = 7, calendars = [], searchKey = "", includeRecurring = true }) {
+export async function listEvents({ fromDate = "", days = 7, calendars = DEFAULT_CALENDARS, searchKey = "", includeRecurring = true }) {
   const from = fromDate || todayIso();
   const calFilter = Array.isArray(calendars) ? calendars : [];
   const searchCond = searchKey ? ` and (summary contains ${asStr(searchKey)})` : "";

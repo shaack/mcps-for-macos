@@ -16,10 +16,20 @@ Installation und Registrierung: siehe [Wurzel-README](../../README.md).
 
 Kein Tool löscht oder ändert bestehende Termine.
 
+## Konfiguration
+
+Die Vorgabe-Kalender für `list_events` stehen in einer lokalen `config.json`, die nicht eingecheckt wird. Vorlage kopieren und die eigenen Kalender eintragen:
+
+```bash
+cp config.example.json config.json
+```
+
+Die exakten Namen liefert `list_calendars`. Fehlt die Datei, werden alle Kalender durchsucht; das ist mit Geburtstags- und abonnierten Kalendern spürbar langsam, siehe Fallstricke. Alternativ übergibt der Aufrufer die Kalender je Aufruf direkt im `calendars`-Parameter, der die Vorgabe ersetzt.
+
 ## Fallstricke
 
 - **Serientermine.** Calendar.app liefert per AppleScript nur den Serien-Stamm mit seinem ursprünglichen Startdatum, keine expandierten Wiederholungen. Ein wöchentliches Meeting, das vor einem Jahr angelegt wurde, taucht im Fenster der nächsten Woche also nicht als Termin auf. `list_events` listet solche Serien darum in einem eigenen Abschnitt mit ihrer Wiederholungsregel (RRULE); ob eine Wiederholung ins Fenster fällt, muss der Aufrufer aus der Regel ableiten. Serien, deren `UNTIL` vor dem Fenster liegt, werden herausgefiltert; Serien mit `COUNT` lassen sich so nicht bewerten und bleiben in der Liste.
-- **Geschwindigkeit.** Ohne `calendars`-Parameter werden alle Kalender durchsucht, auch Geburtstage und abonnierte Feiertagskalender. Bei vielen oder großen Kalendern lohnt es, die Suche auf die relevanten Kalender einzugrenzen.
+- **Geschwindigkeit.** Ohne `calendars`-Parameter und ohne `config.json` werden alle Kalender durchsucht, auch Geburtstage und abonnierte Feiertagskalender; gerade die Serien-Abfrage wird dann teuer, weil jeder Geburtstag eine Jahres-Serie ist. Die Suche auf die relevanten Kalender eingrenzen. Dazu kommt: Calendar.app arbeitet AppleScript-Anfragen seriell ab. Eine langsame Abfrage blockiert alle folgenden, und ein abgebrochener MCP-Aufruf beendet den dahinterliegenden `osascript`-Prozess nicht unbedingt mit.
 - **Ganztägige Termine.** Intern speichert Calendar.app das Ende exklusiv (Mitternacht des Folgetags). Die Tools rechnen das um; in `create_event` ist `end` bei `allday` der letzte Tag inklusive, und `list_events` zeigt den letzten Tag inklusive an.
 - **Beschreibbarkeit.** `create_event` braucht einen beschreibbaren Kalender. In abonnierten Kalendern (Feiertage, geteilte Nur-Lesen-Kalender) schlägt das Anlegen mit einer AppleScript-Fehlermeldung fehl.
 
