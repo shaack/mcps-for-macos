@@ -204,7 +204,8 @@ server.registerTool(
       "Legt einen E-Mail-ENTWURF an, per Vorgabe still im Entwurfsordner ohne " +
       "Fenster (visible: true öffnet ihn sichtbar). Sendet bewusst NICHT: Empfänger, " +
       "Betreff und Text sind ausgefüllt, das Abschicken macht der Nutzer selbst in " +
-      "Mail. Mindestens eine to-Adresse angeben.",
+      "Mail. Mindestens eine to-Adresse angeben. Anhänge über attachments als " +
+      "absolute POSIX-Pfade lokaler Dateien.",
     inputSchema: {
       to: z.array(z.string()).min(1).describe("Empfängeradressen (mindestens eine)"),
       cc: z.array(z.string()).optional().describe("CC-Adressen"),
@@ -219,6 +220,10 @@ server.registerTool(
         .string()
         .optional()
         .describe('Absender, z. B. "Name <a@b.de>" (sonst Standardkonto)'),
+      attachments: z
+        .array(z.string())
+        .optional()
+        .describe("Anhänge als absolute POSIX-Pfade lokaler Dateien"),
     },
   },
   (args) => run(() => createDraft(args))

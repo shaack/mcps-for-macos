@@ -1,4 +1,5 @@
 import { mkdir } from "node:fs/promises";
+import { statSync } from "node:fs";
 import { dirname } from "node:path";
 import { runAppleScript, asStr, asList, dateSetter } from "@mcps/common";
 import { loadConfig } from "./config.js";
@@ -777,11 +778,22 @@ end tell`;
  * @param {string} [opts.body] Nachrichtentext (Klartext)
  * @param {boolean} [opts.visible=false] Entwurf sichtbar in einem Fenster öffnen statt still ablegen
  * @param {string} [opts.from] Absender, z. B. "Name <a@b.de>" (sonst Standardkonto)
+ * @param {string[]} [opts.attachments] Anhänge als absolute POSIX-Pfade lokaler Dateien
  * @returns {Promise<string>} "draft created: <Betreff>"
  */
-export function createDraft({ to = [], cc = [], bcc = [], subject = "", body = "", visible = false, from = "" }) {
+export function createDraft({ to = [], cc = [], bcc = [], subject = "", body = "", visible = false, from = "", attachments = [] }) {
   if (!Array.isArray(to) || to.length === 0) {
     throw new Error("Mindestens eine to-Adresse angeben.");
+  }
+  const attList = Array.isArray(attachments) ? attachments : [];
+  for (const p of attList) {
+    let st;
+    try {
+      st = statSync(p);
+    } catch {
+      throw new Error(`Anhang nicht gefunden: ${p}`);
+    }
+    if (!st.isFile()) throw new Error(`Anhang ist keine Datei: ${p}`);
   }
   const recipients = (kind, list) =>
     (Array.isArray(list) ? list : [])
@@ -793,17 +805,26 @@ export function createDraft({ to = [], cc = [], bcc = [], subject = "", body = "
     recipients("bcc recipient", bcc),
   ].filter(Boolean).join("\n");
   const senderLine = from ? `  set sender of m to ${asStr(from)}\n` : "";
+  // Anhänge hängt Mail nur an bereits gesetzten Text an ("after last paragraph"),
+  // und erst nach einer kurzen Pause landen sie zuverlässig im gesicherten
+  // Entwurf. Ohne abschließenden Zeilenumbruch klebt der Anhang am letzten Satz.
+  const bodyText = attList.length > 0 && body && !body.endsWith("\n") ? body + "\n" : body;
+  const attLines = attList
+    .map((p) => `    make new attachment with properties {file name:POSIX file ${asStr(p)}} at after last paragraph`)
+    .join("\n");
+  const attBlock = attList.length > 0 ? `  tell content of m\n${attLines}\n  end tell\n  delay 1\n` : "";
+  const resultSuffix = attList.length > 0 ? ` & " (Anhänge: ${attList.length})"` : "";
   const script = `
 set subj to ${asStr(subject)}
-set bod to ${asStr(body)}
+set bod to ${asStr(bodyText)}
 
 tell application "Mail"
   set m to make new outgoing message with properties {subject:subj, content:bod, visible:${visible}}
   tell m
 ${recipLines}
   end tell
-${senderLine}${visible ? "  activate" : "  save m"}
-  return ("draft created: " & subj)
+${senderLine}${attBlock}${visible ? "  activate" : "  save m"}
+  return ("draft created: " & subj${resultSuffix})
 end tell`;
   return runAppleScript(script);
 }
