@@ -204,10 +204,31 @@ server.registerTool(
       "Legt einen E-Mail-ENTWURF an, per Vorgabe still im Entwurfsordner ohne " +
       "Fenster (visible: true öffnet ihn sichtbar). Sendet bewusst NICHT: Empfänger, " +
       "Betreff und Text sind ausgefüllt, das Abschicken macht der Nutzer selbst in " +
-      "Mail. Mindestens eine to-Adresse angeben. Anhänge über attachments als " +
-      "absolute POSIX-Pfade lokaler Dateien.",
+      "Mail. Für Antworten inReplyTo (message id) setzen: dann sind to (Absender des " +
+      "Originals), from (Konto der Original-Mailbox) und subject (Re: …) vorbelegt " +
+      "und der Originaltext steht als Zitatblock (\"Am … schrieb …:\", Zeilen mit \"> \") " +
+      "unter dem Text; quote ersetzt den zitierten Text durch die relevanten Stellen, " +
+      "quote: false lässt den Block weg (wenn body schon inline zitiert). Signaturen je " +
+      "Konto aus config.json (signatures) werden angehängt. Ohne inReplyTo mindestens " +
+      "eine to-Adresse angeben. Anhänge über attachments als absolute POSIX-Pfade.",
     inputSchema: {
-      to: z.array(z.string()).min(1).describe("Empfängeradressen (mindestens eine)"),
+      to: z.array(z.string()).optional().describe("Empfängeradressen (Pflicht ohne inReplyTo; mit inReplyTo Vorgabe: Absender des Originals)"),
+      inReplyTo: z
+        .string()
+        .optional()
+        .describe('message id der Anfrage, z. B. "message:%3Cid%3E" oder "id@host"; liefert Vorgaben für to, from, subject und den Zitatblock'),
+      quote: z
+        .union([z.string(), z.literal(false)])
+        .optional()
+        .describe("Nur mit inReplyTo: Text, der statt der ganzen Originalmail zitiert wird (die relevanten Stellen), oder false für keinen Zitatblock"),
+      signature: z
+        .boolean()
+        .optional()
+        .describe("false unterdrückt die Konto-Signatur aus config.json (Vorgabe true)"),
+      mailboxes: z
+        .array(z.string())
+        .optional()
+        .describe("Nur mit inReplyTo: Mailboxen, in denen das Original gesucht wird. Vorgabe wie bei search_messages."),
       cc: z.array(z.string()).optional().describe("CC-Adressen"),
       bcc: z.array(z.string()).optional().describe("BCC-Adressen"),
       subject: z.string().optional().describe("Betreff"),

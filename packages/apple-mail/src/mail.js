@@ -762,28 +762,106 @@ end tell`;
 }
 
 /**
- * Legt einen **Entwurf** an. Sendet bewusst NICHT: Empfänger, Betreff und Text
- * sind ausgefüllt, das Abschicken machst du selbst in Mail. So kann keine Mail
- * versehentlich rausgehen.
- *
- * Vorgabe ist ein stiller Entwurf im Entwurfsordner, ohne Fenster. Das ist bei
- * mehreren Entwürfen am Stück angenehmer und vermeidet Dubletten aus
- * Fenster-Autosicherungen. `visible: true` öffnet ihn stattdessen sichtbar.
- *
- * @param {object} opts
- * @param {string[]} opts.to Empfängeradressen (mindestens eine)
- * @param {string[]} [opts.cc] CC-Adressen
- * @param {string[]} [opts.bcc] BCC-Adressen
- * @param {string} [opts.subject] Betreff
- * @param {string} [opts.body] Nachrichtentext (Klartext)
- * @param {boolean} [opts.visible=false] Entwurf sichtbar in einem Fenster öffnen statt still ablegen
- * @param {string} [opts.from] Absender, z. B. "Name <a@b.de>" (sonst Standardkonto)
- * @param {string[]} [opts.attachments] Anhänge als absolute POSIX-Pfade lokaler Dateien
- * @returns {Promise<string>} "draft created: <Betreff>"
+ * Zerlegt den Text von getMessageById in Kopffelder und Inhalt. Das Format
+ * (From/To/Cc/Subject/Date/Mailbox/Message-Id, Leerzeile, Text) wird oben in
+ * derselben Datei erzeugt, deshalb darf hier darauf vertraut werden.
+ * @param {string} text
+ * @returns {{ from: string, subject: string, date: string, account: string, content: string } | null}
  */
-export function createDraft({ to = [], cc = [], bcc = [], subject = "", body = "", visible = false, from = "", attachments = [] }) {
+function parseMessageText(text) {
+  if (!text || text.trim() === "not found") return null;
+  const sep = text.indexOf("\n\n");
+  const head = sep >= 0 ? text.slice(0, sep) : text;
+  const content = sep >= 0 ? text.slice(sep + 2) : "";
+  const field = (name) => {
+    const m = head.match(new RegExp("^" + name + ": (.*)$", "m"));
+    return m ? m[1].trim() : "";
+  };
+  const mailbox = field("Mailbox");
+  return {
+    from: field("From"),
+    subject: field("Subject"),
+    date: field("Date"),
+    account: mailbox.includes(":") ? mailbox.slice(0, mailbox.indexOf(":")) : "",
+    content,
+  };
+}
+
+/**
+ * Zieht aus "Name <a@b.de>" die nackte Adresse, lässt alles andere unverändert.
+ * @param {string} sender
+ * @returns {string}
+ */
+function addressOf(sender) {
+  const m = String(sender ?? "").match(/<([^>]+)>/);
+  return m ? m[1].trim() : String(sender ?? "").trim();
+}
+
+/**
+ * Antwort-Betreff: vorhandenes Re:/AW:/Fwd:-Präfix bleibt, sonst "Re: " davor.
+ * @param {string} subject
+ * @returns {string}
+ */
+function replySubject(subject) {
+  const subj = String(subject ?? "").trim();
+  return /^(re|aw|wg|fwd?):/i.test(subj) ? subj : `Re: ${subj}`;
+}
+
+/**
+ * Zitatblock im üblichen Mail-Stil: Kopfzeile "Am <Datum> schrieb <Absender>:",
+ * dann jede Zeile des Textes mit "> " davor. Leere Zeilen bleiben als ">".
+ * @param {{ from: string, date: string }} original
+ * @param {string} text
+ * @returns {string}
+ */
+function quoteBlock(original, text) {
+  const lines = String(text ?? "").replace(/\r\n?/g, "\n").trim().split("\n");
+  const quoted = lines.map((l) => (l.trim() === "" ? ">" : `> ${l.replace(/\s+$/, "")}`)).join("\n");
+  return `Am ${original.date} schrieb ${original.from}:\n${quoted}`;
+}
+
+/**
+ * Legt einen **Entwurf** an. Sendet bewusst NICHT: Empfänger, Betreff und Text
+ * sind ausgefüllt, das Abschicken macht der Nutzer selbst in Mail. Vorgabe ist
+ * ein stiller Entwurf im Entwurfsordner ohne Fenster (`visible: true` öffnet
+ * ihn). Anhänge über `attachments` als absolute POSIX-Pfade.
+ *
+ * Mit `inReplyTo` (message id) wird die Originalmail
+ * gelesen und liefert die Vorgaben für alles, was sonst von Hand zusammengebaut
+ * werden muss: Empfänger (Absender des Originals), Absenderkonto (Konto der
+ * Mailbox, in der das Original liegt), Betreff ("Re: …") und ein Zitatblock am
+ * Ende des Textes. Explizit übergebene Werte haben Vorrang. `quote` ersetzt den
+ * zitierten Text (nur die relevanten Stellen), `quote: false` lässt den Block
+ * weg, etwa wenn der Aufrufer selbst inline mit "> " zitiert hat.
+ *
+ * Bewusst nicht über AppleScripts `reply`: das öffnet immer ein Fenster, und
+ * Threading-Header (In-Reply-To) lassen sich per AppleScript ohnehin nicht
+ * setzen. Der Entwurf landet also wie bisher ohne Thread-Zuordnung in Mail.
+ *
+ * Signaturen: `signatures` in config.json, je Konto ein Text. Hängt an den
+ * Text an, sobald das Absenderkonto bekannt ist (from oder Original-Mailbox)
+ * und `signature` nicht false ist. Mail fügt bei per AppleScript gesetztem
+ * Inhalt keine eigene Konto-Signatur an.
+ */
+export async function createDraft({ to = [], cc = [], bcc = [], subject = "", body = "", visible = false, from = "", attachments = [], inReplyTo = "", quote = undefined, signature = true, mailboxes = DEFAULT_MAILBOXES }) {
+  let original = null;
+  if (inReplyTo) {
+    original = parseMessageText(await getMessageById({ messageId: inReplyTo, mailboxes, maxChars: 200000 }));
+    if (!original) throw new Error(`Originalmail nicht gefunden: ${inReplyTo}`);
+    if (!Array.isArray(to) || to.length === 0) to = [addressOf(original.from)];
+    if (!from && original.account) from = original.account;
+    if (!subject) subject = replySubject(original.subject);
+  }
   if (!Array.isArray(to) || to.length === 0) {
-    throw new Error("Mindestens eine to-Adresse angeben.");
+    throw new Error("Mindestens eine to-Adresse angeben (oder inReplyTo).");
+  }
+  const signatures = loadConfig().signatures ?? {};
+  const senderAccount = addressOf(from);
+  const signatureText = signature !== false && senderAccount && signatures[senderAccount] ? String(signatures[senderAccount]).trim() : "";
+  if (signatureText) body = `${body.replace(/\s+$/, "")}\n\n${signatureText}`;
+  if (original && quote !== false) {
+    const text = typeof quote === "string" && quote.trim() !== "" ? quote : original.content;
+    body = `${body.replace(/\s+$/, "")}\n\n${quoteBlock(original, text)}`;
   }
   const attList = Array.isArray(attachments) ? attachments : [];
   for (const p of attList) {

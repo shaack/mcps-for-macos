@@ -3,5 +3,8 @@
     "you@gmail.com:All Mail",
     "you@icloud.com:INBOX",
     "you@icloud.com:Archive"
-  ]
+  ],
+  "signatures": {
+    "you@icloud.com": "Viele Grüße\nVorname Nachname"
+  }
 }

@@ -23,7 +23,7 @@ Installation und Registrierung: siehe [Wurzel-README](../../README.md).
 | `get_message_body` | Klartext-Inhalt der ersten passenden Nachricht lesen, gefunden über Betreff oder Absender; Kopf mit Empfängern |
 | `save_attachment` | Ersten passenden Anhang unter festem Zielpfad speichern; Endungsfilter `endsWith` (Vorgabe `.pdf`) |
 | `save_attachments_by_id` | Alle Anhänge einer per message id bestimmten Nachricht speichern, beliebige Dateitypen |
-| `create_draft` | E-Mail-Entwurf anlegen, per Vorgabe still im Entwurfsordner (`visible: true` öffnet ein Fenster); Anhänge über `attachments` als absolute POSIX-Pfade |
+| `create_draft` | E-Mail-Entwurf anlegen, per Vorgabe still im Entwurfsordner (`visible: true` öffnet ein Fenster); mit `inReplyTo` (message id) als Antwort mit vorbelegtem Empfänger, Absenderkonto, `Re:`-Betreff und Zitatblock (`quote` für Teilzitate, `quote: false` für keins); Signatur je Konto aus `config.json`; Anhänge über `attachments` als absolute POSIX-Pfade |
 | `flag_message` | Fahne an genau einer Nachricht setzen/entfernen, optional mit Farbe; bei mehrdeutigem Schlüssel passiert nichts |
 | `mark_read` | Nachrichten auf gelesen/ungelesen setzen, einzeln oder für ein ganzes Zeitfenster |
 | `move_message` | Nachricht in eine andere Mailbox verschieben, etwa in eine Ablage; fehlende Zielordner werden angelegt |
@@ -84,9 +84,14 @@ eingebauten Abläufe; Fahnenfarben und Ordnernamen legt der Aufrufer fest.
 2. Pro Nachricht `get_message_by_id`; hängen Bilder dran,
    `save_attachments_by_id` in einen Arbeitsordner und ansehen.
 3. Bei bekannten Gegenübern `list_correspondence` für den bisherigen Verlauf.
-4. `create_draft` schreibt die Antwort als Entwurf. Betreff (`Re: …`), Empfänger
-   und, falls gewünscht, das Zitat des Originals baut der Aufrufer selbst in
-   `subject` und `body`. Eine Signatur gehört ebenfalls in `body`, Mail fügt bei
-   per AppleScript gesetztem Inhalt keine Konto-Signatur an.
+4. `create_draft` mit `inReplyTo` (die message id aus Schritt 1) schreibt die
+   Antwort als Entwurf. Empfänger, Absenderkonto und Betreff (`Re: …`) kommen aus
+   dem Original, der Originaltext steht als Zitatblock (`Am … schrieb …:`, Zeilen
+   mit `> `) unter dem Text. `quote` zitiert nur die angegebenen Stellen,
+   `quote: false` lässt den Block weg, wenn `body` schon inline zitiert. Die
+   Signatur des Absenderkontos kommt aus `signatures` in `config.json`, Mail
+   fügt bei per AppleScript gesetztem Inhalt keine eigene an. Bewusst nicht über
+   AppleScripts `reply`: das öffnet immer ein Fenster, und Threading-Header lassen
+   sich per AppleScript ohnehin nicht setzen.
 5. Nach dem Absenden `flag_message` und `move_message` in eine Ablage, damit der
    Posteingang nur Unerledigtes enthält.
