@@ -86,8 +86,10 @@ eingebauten Abläufe; Fahnenfarben und Ordnernamen legt der Aufrufer fest.
 3. Bei bekannten Gegenübern `list_correspondence` für den bisherigen Verlauf.
 4. `create_draft` mit `inReplyTo` (die message id aus Schritt 1) schreibt die
    Antwort als Entwurf. Empfänger, Absenderkonto und Betreff (`Re: …`) kommen aus
-   dem Original, der Originaltext steht als Zitatblock (`Am … schrieb …:`, Zeilen
-   mit `> `) unter dem Text. `quote` zitiert nur die angegebenen Stellen,
+   dem Original, der Originaltext steht als Zitatblock wie in Mail unter dem Text
+   (Kopfzeile `Am 3. Okt. 2026 um 21:13 schrieb …:` oder `On 3. Oct 2026, at
+   21:13, … wrote:`, dann Leerzeile und Text, alles mit `> `; die Sprache folgt
+   `lang` oder wird aus dem Antworttext geraten). `quote` zitiert nur die angegebenen Stellen,
    `quote: false` lässt den Block weg, wenn `body` schon inline zitiert. Die
    Signatur des Absenderkontos kommt aus `signatures` in `config.json`, Mail
    fügt bei per AppleScript gesetztem Inhalt keine eigene an. Bewusst nicht über

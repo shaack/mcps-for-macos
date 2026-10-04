@@ -599,11 +599,13 @@ tell application "Mail"
         end try
         repeat with m in hits
           set dr to (date received of m)
+          set iso to (year of dr as string) & "-" & text -2 thru -1 of ("0" & ((month of dr) as integer)) & "-" & text -2 thru -1 of ("0" & (day of dr)) & " " & text -2 thru -1 of ("0" & (hours of dr)) & ":" & text -2 thru -1 of ("0" & (minutes of dr))
 ${RECIPIENT_LINES}
           return "From: " & (sender of m) & linefeed ¬
             & toLine & ccLine ¬
             & "Subject: " & (subject of m) & linefeed ¬
             & "Date: " & (dr as string) & linefeed ¬
+            & "DateIso: " & iso & linefeed ¬
             & "Mailbox: " & (name of acc) & ":" & (name of mb) & linefeed ¬
             & "Message-Id: message:%3C" & theId & "%3E" & linefeed & linefeed ¬
             & (content of m as text)
@@ -766,7 +768,7 @@ end tell`;
  * (From/To/Cc/Subject/Date/Mailbox/Message-Id, Leerzeile, Text) wird oben in
  * derselben Datei erzeugt, deshalb darf hier darauf vertraut werden.
  * @param {string} text
- * @returns {{ from: string, subject: string, date: string, account: string, content: string } | null}
+ * @returns {{ from: string, subject: string, date: string, dateIso: string, account: string, content: string } | null}
  */
 function parseMessageText(text) {
   if (!text || text.trim() === "not found") return null;
@@ -782,6 +784,7 @@ function parseMessageText(text) {
     from: field("From"),
     subject: field("Subject"),
     date: field("Date"),
+    dateIso: field("DateIso"),
     account: mailbox.includes(":") ? mailbox.slice(0, mailbox.indexOf(":")) : "",
     content,
   };
@@ -808,16 +811,63 @@ function replySubject(subject) {
 }
 
 /**
- * Zitatblock im üblichen Mail-Stil: Kopfzeile "Am <Datum> schrieb <Absender>:",
- * dann jede Zeile des Textes mit "> " davor. Leere Zeilen bleiben als ">".
- * @param {{ from: string, date: string }} original
+ * Rät die Sprache einer Antwort aus dem Text: Deutsch oder Englisch, über
+ * häufige Funktionswörter. Bei Gleichstand oder zu wenig Text Deutsch.
  * @param {string} text
+ * @returns {"de"|"en"}
+ */
+function guessLang(text) {
+  const words = String(text ?? "").toLowerCase().match(/[a-zäöüß']+/g) ?? [];
+  const de = new Set(["und", "der", "die", "das", "nicht", "ist", "sie", "ich", "mit", "für", "ein", "eine", "dass", "wird", "auf", "bei", "grüße", "hallo", "danke", "bitte"]);
+  const en = new Set(["and", "the", "not", "is", "you", "your", "with", "for", "that", "are", "this", "have", "hello", "thanks", "regards", "please", "games", "game", "it"]);
+  let d = 0, e = 0;
+  for (const w of words) {
+    if (de.has(w)) d++;
+    if (en.has(w)) e++;
+  }
+  return e > d ? "en" : "de";
+}
+
+const MONTHS = {
+  de: ["Jan.", "Feb.", "März", "Apr.", "Mai", "Juni", "Juli", "Aug.", "Sept.", "Okt.", "Nov.", "Dez."],
+  en: ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
+};
+
+/**
+ * Kopfzeile des Zitats wie Mail sie schreibt, je Sprache:
+ *   de: "Am 3. Okt. 2026 um 21:13 schrieb Name <a@b>:"
+ *   en: "On 3. Oct 2026, at 21:13, Name <a@b> wrote:"
+ * Grundlage ist die DateIso-Zeile aus getMessageById; fehlt sie, der
+ * AppleScript-Datumstext.
+ * @param {{ from: string, date: string, dateIso?: string }} original
+ * @param {"de"|"en"} lang
  * @returns {string}
  */
-function quoteBlock(original, text) {
+function quoteHeader(original, lang) {
+  const m = String(original.dateIso ?? "").match(/^(\d{4})-(\d{2})-(\d{2}) (\d{2}:\d{2})$/);
+  let when;
+  if (m) {
+    const [, y, mo, d, hm] = m;
+    const month = MONTHS[lang][parseInt(mo, 10) - 1];
+    when = lang === "en" ? `${parseInt(d, 10)}. ${month} ${y}, at ${hm}` : `${parseInt(d, 10)}. ${month} ${y} um ${hm}`;
+  } else {
+    when = original.date;
+  }
+  return lang === "en" ? `On ${when}, ${original.from} wrote:` : `Am ${when} schrieb ${original.from}:`;
+}
+
+/**
+ * Zitatblock im Stil von Mail: Kopfzeile, Leerzeile und Text, alles mit "> "
+ * davor, leere Zeilen als ">".
+ * @param {{ from: string, date: string, dateIso?: string }} original
+ * @param {string} text
+ * @param {"de"|"en"} lang
+ * @returns {string}
+ */
+function quoteBlock(original, text, lang) {
   const lines = String(text ?? "").replace(/\r\n?/g, "\n").trim().split("\n");
   const quoted = lines.map((l) => (l.trim() === "" ? ">" : `> ${l.replace(/\s+$/, "")}`)).join("\n");
-  return `Am ${original.date} schrieb ${original.from}:\n${quoted}`;
+  return `> ${quoteHeader(original, lang)}\n>\n${quoted}`;
 }
 
 /**
@@ -832,7 +882,9 @@ function quoteBlock(original, text) {
  * Mailbox, in der das Original liegt), Betreff ("Re: …") und ein Zitatblock am
  * Ende des Textes. Explizit übergebene Werte haben Vorrang. `quote` ersetzt den
  * zitierten Text (nur die relevanten Stellen), `quote: false` lässt den Block
- * weg, etwa wenn der Aufrufer selbst inline mit "> " zitiert hat.
+ * weg, etwa wenn der Aufrufer selbst inline mit "> " zitiert hat. Die Kopfzeile
+ * des Zitats ("Am … schrieb …:" bzw. "On …, … wrote:") folgt `lang`, ohne Angabe
+ * wird die Sprache aus dem Antworttext geraten.
  *
  * Bewusst nicht über AppleScripts `reply`: das öffnet immer ein Fenster, und
  * Threading-Header (In-Reply-To) lassen sich per AppleScript ohnehin nicht
@@ -843,7 +895,7 @@ function quoteBlock(original, text) {
  * und `signature` nicht false ist. Mail fügt bei per AppleScript gesetztem
  * Inhalt keine eigene Konto-Signatur an.
  */
-export async function createDraft({ to = [], cc = [], bcc = [], subject = "", body = "", visible = false, from = "", attachments = [], inReplyTo = "", quote = undefined, signature = true, mailboxes = DEFAULT_MAILBOXES }) {
+export async function createDraft({ to = [], cc = [], bcc = [], subject = "", body = "", visible = false, from = "", attachments = [], inReplyTo = "", quote = undefined, signature = true, lang = "", mailboxes = DEFAULT_MAILBOXES }) {
   let original = null;
   if (inReplyTo) {
     original = parseMessageText(await getMessageById({ messageId: inReplyTo, mailboxes, maxChars: 200000 }));
@@ -861,7 +913,8 @@ export async function createDraft({ to = [], cc = [], bcc = [], subject = "", bo
   if (signatureText) body = `${body.replace(/\s+$/, "")}\n\n${signatureText}`;
   if (original && quote !== false) {
     const text = typeof quote === "string" && quote.trim() !== "" ? quote : original.content;
-    body = `${body.replace(/\s+$/, "")}\n\n${quoteBlock(original, text)}`;
+    const quoteLang = lang === "de" || lang === "en" ? lang : guessLang(body);
+    body = `${body.replace(/\s+$/, "")}\n\n${quoteBlock(original, text, quoteLang)}`;
   }
   const attList = Array.isArray(attachments) ? attachments : [];
   for (const p of attList) {

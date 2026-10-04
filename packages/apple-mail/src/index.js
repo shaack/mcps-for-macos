@@ -206,7 +206,7 @@ server.registerTool(
       "Betreff und Text sind ausgefüllt, das Abschicken macht der Nutzer selbst in " +
       "Mail. Für Antworten inReplyTo (message id) setzen: dann sind to (Absender des " +
       "Originals), from (Konto der Original-Mailbox) und subject (Re: …) vorbelegt " +
-      "und der Originaltext steht als Zitatblock (\"Am … schrieb …:\", Zeilen mit \"> \") " +
+      "und der Originaltext steht als Zitatblock wie in Mail (Kopfzeile \"Am … schrieb …:\" bzw. \"On …, … wrote:\", alles mit \"> \") " +
       "unter dem Text; quote ersetzt den zitierten Text durch die relevanten Stellen, " +
       "quote: false lässt den Block weg (wenn body schon inline zitiert). Signaturen je " +
       "Konto aus config.json (signatures) werden angehängt. Ohne inReplyTo mindestens " +
@@ -225,6 +225,10 @@ server.registerTool(
         .boolean()
         .optional()
         .describe("false unterdrückt die Konto-Signatur aus config.json (Vorgabe true)"),
+      lang: z
+        .enum(["de", "en"])
+        .optional()
+        .describe('Sprache der Zitat-Kopfzeile ("Am … schrieb …:" oder "On …, … wrote:"); ohne Angabe aus dem Antworttext geraten'),
       mailboxes: z
         .array(z.string())
         .optional()
