@@ -580,11 +580,17 @@ end tell`;
  * @param {string} opts.messageId message id in beliebiger der drei Formen
  * @param {string[]} [opts.mailboxes] Mailboxen "<Konto>:<Mailbox>"
  * @param {number} [opts.maxChars=20000] Ausgabe auf so viele Zeichen kürzen
+ * @param {"none"|"auth"|"all"} [opts.headers="none"] Rohe Kopfzeilen zwischen Kopf und
+ *   Inhalt einfügen: "auth" nur die für eine Echtheitsprüfung (siehe AUTH_HEADERS), "all" alle
  * @returns {Promise<string>}
  */
-export async function getMessageById({ messageId, mailboxes = DEFAULT_MAILBOXES, maxChars = 20000 }) {
+export async function getMessageById({ messageId, mailboxes = DEFAULT_MAILBOXES, maxChars = 20000, headers = "none" }) {
   const id = normalizeMessageId(messageId);
   if (!id) throw new Error("messageId angeben.");
+  if (!["none", "auth", "all"].includes(headers)) throw new Error('headers muss "none", "auth" oder "all" sein.');
+  // Die Kopfzeilen hängt das Skript hinter einer Marke an, damit der Inhalt
+  // (content) nicht durch Zerlegen der Rückgabe beschädigt werden kann.
+  const headerPart = headers === "none" ? "" : ` & linefeed & ${asStr(HEADERS_MARK)} & linefeed & (all headers of m)`;
   const script = `
 set theId to ${asStr(id)}
 set wanted to ${asList(mailboxes)}
@@ -608,18 +614,67 @@ ${RECIPIENT_LINES}
             & "DateIso: " & iso & linefeed ¬
             & "Mailbox: " & (name of acc) & ":" & (name of mb) & linefeed ¬
             & "Message-Id: message:%3C" & theId & "%3E" & linefeed & linefeed ¬
-            & (content of m as text)
+            & (content of m as text)${headerPart}
         end repeat
       end if
     end repeat
   end repeat
   return "not found"
 end tell`;
-  const body = await runAppleScript(script);
+  let body = await runAppleScript(script);
+  const markAt = body.lastIndexOf(`\n${HEADERS_MARK}\n`);
+  if (markAt >= 0) {
+    const raw = body.slice(markAt + HEADERS_MARK.length + 2);
+    body = body.slice(0, markAt);
+    const lines = unfoldHeaders(raw).filter((line) => headers === "all" || isAuthHeader(line));
+    const split = body.indexOf("\n\n");
+    const block = `Headers (${headers}):\n${lines.join("\n") || "(keine)"}\n`;
+    body = split >= 0 ? body.slice(0, split + 1) + "\n" + block + body.slice(split + 1) : body + "\n\n" + block;
+  }
   if (body.length > maxChars) {
     return body.slice(0, maxChars) + `\n\n… (gekürzt auf ${maxChars} Zeichen)`;
   }
   return body;
+}
+
+const HEADERS_MARK = "<<<MCP-RAW-HEADERS>>>";
+
+/** Kopfzeilen, an denen sich Herkunft und Echtheit einer Mail ablesen lassen. */
+const AUTH_HEADERS = [
+  "authentication-results",
+  "arc-authentication-results",
+  "received-spf",
+  "dkim-signature",
+  "received",
+  "return-path",
+  "reply-to",
+  "from",
+  "sender",
+  "delivered-to",
+];
+
+/**
+ * Fügt gefaltete Kopfzeilen (Fortsetzung beginnt mit Leerzeichen/Tab) zu je
+ * einer Zeile zusammen.
+ * @param {string} raw
+ * @returns {string[]}
+ */
+function unfoldHeaders(raw) {
+  const lines = [];
+  for (const line of raw.replace(/\r/g, "").split("\n")) {
+    if (/^[ \t]/.test(line) && lines.length > 0) {
+      lines[lines.length - 1] += " " + line.trim();
+    } else if (line.trim() !== "") {
+      lines.push(line);
+    }
+  }
+  return lines;
+}
+
+/** @param {string} line */
+function isAuthHeader(line) {
+  const name = line.slice(0, line.indexOf(":")).trim().toLowerCase();
+  return AUTH_HEADERS.includes(name);
 }
 
 /**

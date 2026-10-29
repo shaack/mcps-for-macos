@@ -297,9 +297,15 @@ server.registerTool(
     description:
       "Liefert Kopf (From, To, Cc, Subject, Date), Fundort (Konto:Mailbox) und " +
       "Klartext-Inhalt der Nachricht mit genau dieser message id. Akzeptiert die rohe id, \"<id>\" und die klickbare " +
-      "\"message:%3Cid%3E\"-URL aus list_messages bzw. macOS Mail.",
+      "\"message:%3Cid%3E\"-URL aus list_messages bzw. macOS Mail. Mit headers=\"auth\" kommen die Kopfzeilen " +
+      "für eine Echtheitsprüfung dazu (Authentication-Results mit SPF/DKIM/DMARC, Received-Kette, Return-Path, " +
+      "Reply-To), mit headers=\"all\" alle rohen Kopfzeilen.",
     inputSchema: {
       messageId: z.string().describe('message id, z. B. "message:%3Cabc@mail.example%3E" oder "abc@mail.example"'),
+      headers: z
+        .enum(["none", "auth", "all"])
+        .optional()
+        .describe('Rohe Kopfzeilen mitliefern: "auth" für die Echtheitsprüfung, "all" alle (Vorgabe "none")'),
       maxChars: z
         .number()
         .int()
